@@ -1,0 +1,7 @@
+# QueueX - Phase 1 Dependencies
+# Database drivers (choose one based on your database)
+mysql-connector-python==8.3.0
+# psycopg2-binary==2.9.9  # Uncomment for PostgreSQL instead of MySQL
+
+# Configuration
+python-dotenv==1.0.1

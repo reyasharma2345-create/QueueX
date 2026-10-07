@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ queue.name }} - QueueX</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                         Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: #2563eb;
+            color: white;
+            padding: 24px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .subtitle {
+            opacity: 0.9;
+            margin-top: 4px;
+            font-size: 14px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin-top: 16px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.8;
+            text-transform: uppercase;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #1f2937;
+        }
+
+        .token-list {
+            list-style: none;
+        }
+
+        .token-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .token-item:last-child {
+            border-bottom: none;
+        }
+
+        .token-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #2563eb;
+        }
+
+        .token-info {
+            flex: 1;
+            margin-left: 24px;
+        }
+
+        .token-name {
+            font-size: 16px;
+            font-weight: 500;
+            color: #1f2937;
+        }
+
+        .token-meta {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+
+        .token-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .status-waiting {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-called {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .status-serving {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-completed {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .status-no_show {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .empty {
+            text-align: center;
+            color: #9ca3af;
+            padding: 40px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 24px;
+            color: #2563eb;
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .updating {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <header>
+        <h1>{{ queue.name }}</h1>
+
+        <p class="subtitle">
+            {{ queue.branch_name }} • {{ queue.service_name }}
+        </p>
+
+        <div class="stats">
+
+            <!-- WAITING -->
+            <div class="stat">
+                <div class="stat-value" id="waiting-count">
+                    {{ queue.waiting_count }}
+                </div>
+
+                <div class="stat-label">
+                    Waiting
+                </div>
+            </div>
+
+            <!-- ESTIMATED WAIT -->
+            <div class="stat">
+                <div class="stat-value" id="estimated-wait">
+                    {{ queue.estimated_wait_minutes }}
+                </div>
+
+                <div class="stat-label">
+                    Est. Wait (min)
+                </div>
+            </div>
+
+            <!-- SERVICE TIME -->
+            <div class="stat">
+                <div class="stat-value">
+                    {{ queue.estimated_duration_minutes }}
+                </div>
+
+                <div class="stat-label">
+                    Service Time (min)
+                </div>
+            </div>
+
+        </div>
+
+        <div class="updating">
+            Live updates every 2 seconds
+        </div>
+    </header>
+
+
+    <div class="card">
+
+        <h3>Current Queue</h3>
+
+        <ul class="token-list" id="tokens">
+
+            {% if queue.tokens %}
+
+                {% for token in queue.tokens %}
+
+                <li class="token-item">
+
+                    <span class="token-number">
+                        {{ token.token_number }}
+                    </span>
+
+                    <div class="token-info">
+
+                        <div class="token-name">
+                            {{ token.customer_name }}
+                        </div>
+
+                        <div class="token-meta">
+
+                            {% if token.status == 'called' and token.called_at %}
+
+                                Called at {{ token.called_at.strftime('%H:%M') }}
+
+                            {% elif token.status == 'waiting' %}
+
+                                Waiting...
+
+                            {% endif %}
+
+                        </div>
+
+                    </div>
+
+                    <span class="token-status status-{{ token.status }}">
+                        {{ token.status }}
+                    </span>
+
+                </li>
+
+                {% endfor %}
+
+            {% else %}
+
+                <li class="empty">
+                    No tokens in queue
+                </li>
+
+            {% endif %}
+
+        </ul>
+
+    </div>
+
+
+    <a href="/" class="back-link">
+        ← Back to Dashboard
+    </a>
+
+</div>
+
+
+<script>
+
+    /*
+     * Prevent two refresh requests from running
+     * at the same time.
+     */
+    let refreshing = false;
+
+
+    /*
+     * Refresh queue data from Flask API.
+     *
+     * Flask gets the latest information directly
+     * from MySQL.
+     */
+    async function refreshQueue() {
+
+        if (refreshing) {
+            return;
+        }
+
+        refreshing = true;
+
+        try {
+
+            const response = await fetch(
+                '/api/queues/{{ queue.queue_id }}?_=' + Date.now(),
+                {
+                    method: 'GET',
+                    cache: 'no-store'
+                }
+            );
+
+
+            if (!response.ok) {
+                throw new Error(
+                    'HTTP error: ' + response.status
+                );
+            }
+
+
+            const data = await response.json();
+
+
+            /*
+             * Update WAITING count.
+             */
+            const waitingCount =
+                document.getElementById('waiting-count');
+
+            if (waitingCount) {
+                waitingCount.textContent =
+                    data.waiting_count ?? 0;
+            }
+
+
+            /*
+             * Update estimated waiting time.
+             */
+            const estimatedWait =
+                document.getElementById('estimated-wait');
+
+            if (estimatedWait) {
+                estimatedWait.textContent =
+                    data.estimated_wait_minutes ?? 0;
+            }
+
+
+            /*
+             * Get token list element.
+             */
+            const list =
+                document.getElementById('tokens');
+
+
+            if (!list) {
+                return;
+            }
+
+
+            /*
+             * If there are no waiting/called tokens,
+             * show empty message.
+             */
+            if (!data.tokens || data.tokens.length === 0) {
+
+                list.innerHTML =
+                    '<li class="empty">No tokens in queue</li>';
+
+                return;
+            }
+
+
+            /*
+             * Rebuild token list using latest
+             * database information.
+             */
+            list.innerHTML = data.tokens.map(token => {
+
+                let meta = '';
+
+
+                /*
+                 * Called token.
+                 */
+                if (
+                    token.status === 'called' &&
+                    token.called_at
+                ) {
+
+                    const calledDate =
+                        new Date(token.called_at);
+
+                    meta =
+                        'Called at ' +
+                        calledDate.toLocaleTimeString(
+                            [],
+                            {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            }
+                        );
+                }
+
+
+                /*
+                 * Waiting token.
+                 */
+                else if (token.status === 'waiting') {
+
+                    meta = 'Waiting...';
+                }
+
+
+                return `
+                    <li class="token-item">
+
+                        <span class="token-number">
+                            ${token.token_number}
+                        </span>
+
+                        <div class="token-info">
+
+                            <div class="token-name">
+                                ${token.customer_name}
+                            </div>
+
+                            <div class="token-meta">
+                                ${meta}
+                            </div>
+
+                        </div>
+
+                        <span class="token-status status-${token.status}">
+                            ${token.status}
+                        </span>
+
+                    </li>
+                `;
+
+            }).join('');
+
+
+        } catch (error) {
+
+            console.error(
+                'Queue refresh failed:',
+                error
+            );
+
+        } finally {
+
+            refreshing = false;
+        }
+    }
+
+
+    /*
+     * Load immediately when page opens.
+     */
+    refreshQueue();
+
+
+    /*
+     * Refresh every 2 seconds.
+     */
+    setInterval(refreshQueue, 2000);
+
+</script>
+
+</body>
+</html>

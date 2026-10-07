@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QueueX - Queue Management System</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #eff6ff;
+            --text: #111827;
+            --muted: #6b7280;
+            --border: #e5e7eb;
+            --background: #f3f4f6;
+            --white: #ffffff;
+            --success: #059669;
+            --success-light: #ecfdf5;
+        }
+
+        body {
+            font-family:
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                Roboto,
+                Helvetica,
+                Arial,
+                sans-serif;
+
+            background: var(--background);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* =========================
+           HEADER
+        ========================= */
+
+        header {
+            background: linear-gradient(
+                135deg,
+                #2563eb,
+                #1d4ed8
+            );
+
+            color: white;
+            padding: 34px 36px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+
+            box-shadow:
+                0 10px 25px rgba(37, 99, 235, 0.15);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle {
+            margin-top: 6px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 15px;
+        }
+
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+
+            padding: 8px 12px;
+            border-radius: 999px;
+
+            background: rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #86efac;
+            box-shadow: 0 0 0 4px rgba(134, 239, 172, 0.15);
+        }
+
+        /* =========================
+           MAIN GRID
+        ========================= */
+
+        .grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+            gap: 20px;
+            align-items: start;
+        }
+
+        .card {
+            background: var(--white);
+            border: 1px solid rgba(229, 231, 235, 0.8);
+            border-radius: 16px;
+            padding: 22px;
+
+            box-shadow:
+                0 4px 12px rgba(0, 0, 0, 0.04);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+
+            margin-bottom: 18px;
+        }
+
+        .card h3 {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 3px;
+        }
+
+        /* =========================
+           QUEUE LIST
+        ========================= */
+
+        .queue-list {
+            list-style: none;
+        }
+
+        .queue-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 18px;
+
+            padding: 18px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .queue-item:last-child {
+            border-bottom: none;
+            padding-bottom: 4px;
+        }
+
+        .queue-item:first-child {
+            padding-top: 4px;
+        }
+
+        .queue-info {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .queue-info h4 {
+            font-size: 15px;
+            font-weight: 650;
+            color: var(--text);
+            line-height: 1.4;
+        }
+
+        .queue-info p {
+            margin-top: 4px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .queue-badge {
+            display: inline-block;
+            margin-top: 8px;
+
+            padding: 4px 8px;
+            border-radius: 999px;
+
+            background: var(--success-light);
+            color: var(--success);
+
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        /* =========================
+           QUEUE STATS
+        ========================= */
+
+        .queue-right {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            flex-shrink: 0;
+        }
+
+        .queue-stats {
+            display: flex;
+            gap: 18px;
+        }
+
+        .stat {
+            min-width: 62px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 22px;
+            font-weight: 750;
+            color: var(--primary);
+            line-height: 1;
+        }
+
+        .stat-label {
+            margin-top: 5px;
+            font-size: 9px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        /* =========================
+           BUTTONS
+        ========================= */
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+
+            min-height: 38px;
+            padding: 8px 15px;
+
+            background: var(--primary);
+            color: white;
+
+            border: none;
+            border-radius: 8px;
+
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+
+            cursor: pointer;
+
+            transition:
+                background 0.2s ease,
+                transform 0.15s ease,
+                box-shadow 0.2s ease;
+        }
+
+        .btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.18);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .queue-view-btn {
+            min-width: 66px;
+        }
+
+        /* =========================
+           QUICK ACTIONS
+        ========================= */
+
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .action {
+            width: 100%;
+            justify-content: flex-start;
+            padding: 12px 15px;
+            min-height: 44px;
+        }
+
+        .action-primary {
+    background: #2563eb;
+}
+
+.action-primary:hover {
+    background: #1d4ed8;
+}
+
+        /* =========================
+           EMPTY / ERROR
+        ========================= */
+
+        .empty {
+            text-align: center;
+            color: var(--muted);
+            padding: 40px 20px;
+            font-size: 13px;
+        }
+
+        .error {
+            color: #dc2626;
+        }
+
+        /* =========================
+           FOOTER INFO
+        ========================= */
+
+        .footer-info {
+            margin-top: 18px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        /* =========================
+           RESPONSIVE
+        ========================= */
+
+        @media (max-width: 850px) {
+            body {
+                padding: 16px;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 620px) {
+            header {
+                padding: 26px 22px;
+            }
+
+            .header-top {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            h1 {
+                font-size: 28px;
+            }
+
+            .queue-item {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .queue-right {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .queue-stats {
+                gap: 24px;
+            }
+
+            .queue-view-btn {
+                min-width: 76px;
+            }
+        }
+
+        @media (max-width: 400px) {
+            body {
+                padding: 10px;
+            }
+
+            .card {
+                padding: 17px;
+            }
+
+            .queue-right {
+                align-items: flex-end;
+            }
+
+            .queue-stats {
+                gap: 12px;
+            }
+
+            .stat {
+                min-width: 52px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <!-- HEADER -->
+        <header>
+            <div class="header-top">
+
+                <div>
+                    <h1>QueueX</h1>
+                    <p class="subtitle">
+                        Token-based Queue Management System
+                    </p>
+                </div>
+
+                <div class="live-indicator">
+                    <span class="live-dot"></span>
+                    Live Updates
+                </div>
+
+            </div>
+        </header>
+
+
+        <!-- MAIN CONTENT -->
+        <div class="grid">
+
+            <!-- ACTIVE QUEUES -->
+            <div class="card">
+
+                <div class="card-header">
+                    <div>
+                        <h3>Active Queues</h3>
+                        <p class="card-subtitle">
+                            Current waiting status
+                        </p>
+                    </div>
+                </div>
+
+                <ul class="queue-list" id="queues">
+                    <li class="empty">
+                        Loading queues...
+                    </li>
+                </ul>
+
+            </div>
+
+
+            <!-- QUICK ACTIONS -->
+            <div class="card">
+
+                <div class="card-header">
+                    <div>
+                        <h3>Quick Actions</h3>
+                        <p class="card-subtitle">
+                            Navigate QueueX
+                        </p>
+                    </div>
+                </div>
+
+                <div class="actions">
+
+                    <a
+                        href="/customer"
+                        class="btn action action-primary"
+                    >
+                        Get a Token
+                    </a>
+
+                    <a
+                        href="/branches"
+                        class="btn action"
+                    >
+                        Manage Branches
+                    </a>
+
+                    <a
+                        href="/services"
+                        class="btn action"
+                    >
+                        Manage Services
+                    </a>
+
+                    <a
+                        href="/counters"
+                        class="btn action"
+                    >
+                        View Counters
+                    </a>
+
+                    <a
+                        href="/staff"
+                        class="btn action"
+                    >
+                        View Staff
+                    </a>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="footer-info">
+            QueueX automatically refreshes queue information every 2 seconds.
+        </div>
+
+    </div>
+
+
+    <script>
+
+        async function loadQueues() {
+
+            try {
+
+                const res = await fetch('/api/queues');
+
+                if (!res.ok) {
+                    throw new Error('Failed to fetch queues');
+                }
+
+                const queues = await res.json();
+
+                const list = document.getElementById('queues');
+
+
+                if (!queues.length) {
+
+                    list.innerHTML = `
+                        <li class="empty">
+                            No active queues available.
+                        </li>
+                    `;
+
+                    return;
+                }
+
+
+                list.innerHTML = queues.map(q => `
+
+                    <li class="queue-item">
+
+                        <div class="queue-info">
+
+                            <h4>
+                                ${q.name}
+                            </h4>
+
+                            <p>
+                                ${q.branch_name} • ${q.service_name}
+                            </p>
+
+                            <span class="queue-badge">
+                                Active
+                            </span>
+
+                        </div>
+
+
+                        <div class="queue-right">
+
+                            <div class="queue-stats">
+
+                                <div class="stat">
+
+                                    <div class="stat-value">
+                                        ${q.waiting_count}
+                                    </div>
+
+                                    <div class="stat-label">
+                                        Waiting
+                                    </div>
+
+                                </div>
+
+
+                                <div class="stat">
+
+                                    <div class="stat-value">
+                                        ${q.estimated_wait_minutes}
+                                    </div>
+
+                                    <div class="stat-label">
+                                        Est. Wait
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            <a
+                                href="/queue/${q.queue_id}"
+                                class="btn queue-view-btn"
+                            >
+                                View
+                            </a>
+
+                        </div>
+
+                    </li>
+
+                `).join('');
+
+            }
+
+            catch (e) {
+
+                console.error('Queue loading error:', e);
+
+                document.getElementById('queues').innerHTML = `
+                    <li class="empty error">
+                        Failed to load queues.
+                    </li>
+                `;
+
+            }
+
+        }
+
+
+        // Initial load
+        loadQueues();
+
+
+        // Live queue updates every 2 seconds
+        setInterval(loadQueues, 2000);
+
+    </script>
+
+</body>
+</html>
