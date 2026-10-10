@@ -24,3 +24,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local database backups
+*_before_upgrade.sql
+*.sql.bak

@@ -332,3 +332,190 @@ def get_estimated_wait_time(queue_id: int) -> int:
             )
 
         return 0
+
+def create_customer_request(
+    customer_id: int,
+    queue_id: int
+) -> int:
+    """
+    Create a draft request and add the documents configured
+    for the service associated with the selected queue.
+    """
+
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+
+        try:
+            # Verify the queue is active and get its service.
+            cursor.execute("""
+                SELECT q.queue_id, q.service_id
+                FROM Queue q
+                WHERE q.queue_id = %s
+                  AND q.is_active = 1
+            """, (queue_id,))
+
+            queue = cursor.fetchone()
+
+            if not queue:
+                raise ValueError("Invalid or inactive queue")
+
+            # Verify the customer exists.
+            cursor.execute("""
+                SELECT customer_id
+                FROM Customer
+                WHERE customer_id = %s
+            """, (customer_id,))
+
+            if not cursor.fetchone():
+                raise ValueError("Customer not found")
+
+            # Create the draft request.
+            cursor.execute("""
+                INSERT INTO customer_request (
+                    customer_id,
+                    queue_id,
+                    request_status
+                )
+                VALUES (%s, %s, 'draft')
+            """, (customer_id, queue_id))
+
+            request_id = cursor.lastrowid
+
+            # Add active documents configured for this service.
+            cursor.execute("""
+                INSERT INTO request_document (
+                    request_id,
+                    document_id,
+                    readiness_status
+                )
+                SELECT %s, d.document_id, 'pending'
+                FROM service_document sd
+                JOIN document d
+                    ON d.document_id = sd.document_id
+                WHERE sd.service_id = %s
+                  AND d.is_active = 1
+            """, (request_id, queue["service_id"]))
+
+            return request_id
+
+        finally:
+            cursor.close()
+
+def update_request_document_status(
+    request_id: int,
+    document_id: int,
+    readiness_status: str
+) -> None:
+    """
+    Update document readiness for a request.
+
+    Allowed statuses: available, missing.
+    """
+
+    if readiness_status not in ("available", "missing"):
+        raise ValueError(
+            "Status must be 'available' or 'missing'"
+        )
+
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+
+        try:
+            # Confirm that this document belongs to the
+            # service associated with the request.
+            cursor.execute("""
+                SELECT rd.request_id
+                FROM request_document rd
+                JOIN customer_request cr
+                    ON cr.request_id = rd.request_id
+                JOIN Queue q
+                    ON q.queue_id = cr.queue_id
+                JOIN service_document sd
+                    ON sd.service_id = q.service_id
+                   AND sd.document_id = rd.document_id
+                JOIN document d
+                    ON d.document_id = rd.document_id
+                WHERE rd.request_id = %s
+                  AND rd.document_id = %s
+                  AND d.is_active = 1
+            """, (request_id, document_id))
+
+            if not cursor.fetchone():
+                raise ValueError(
+                    "Document is not valid for this request"
+                )
+
+            # Update only the matching request-document row.
+            cursor.execute("""
+                UPDATE request_document
+                SET readiness_status = %s,
+                    confirmed_at = CURRENT_TIMESTAMP
+                WHERE request_id = %s
+                  AND document_id = %s
+            """, (readiness_status, request_id, document_id))
+
+        finally:
+            cursor.close()
+
+def confirm_customer_request_readiness(request_id: int) -> None:
+    """Confirm readiness only when all required documents are available."""
+
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+
+        try:
+            cursor.execute("""
+                SELECT request_status, readiness_confirmed
+                FROM customer_request
+                WHERE request_id = %s
+                FOR UPDATE
+            """, (request_id,))
+
+            customer_request = cursor.fetchone()
+
+            if not customer_request:
+                raise ValueError("Customer request not found")
+
+            if customer_request["request_status"] != "draft":
+                raise ValueError(
+                    "Only draft requests can be confirmed"
+                )
+
+            cursor.execute("""
+                SELECT COUNT(*) AS incomplete_count
+                FROM request_document rd
+                JOIN customer_request cr
+                    ON cr.request_id = rd.request_id
+                JOIN Queue q
+                    ON q.queue_id = cr.queue_id
+                JOIN service_document sd
+                    ON sd.service_id = q.service_id
+                   AND sd.document_id = rd.document_id
+                WHERE rd.request_id = %s
+                  AND sd.is_required = 1
+                  AND rd.readiness_status <> 'available'
+            """, (request_id,))
+
+            result = cursor.fetchone()
+
+            if result["incomplete_count"] > 0:
+                raise ValueError(
+                    "All required documents must be available"
+                )
+
+            cursor.execute("""
+                UPDATE customer_request
+                SET readiness_confirmed = 1,
+                    request_status = 'ready',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE request_id = %s
+            """, (request_id,))
+
+        finally:
+            cursor.close()
+create_customer_request
+
+update_request_document_status
+
+confirm_customer_request_readiness
+

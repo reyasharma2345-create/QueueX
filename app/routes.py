@@ -7,6 +7,7 @@ API and Web route definitions.
 from flask import Blueprint, request, jsonify, render_template, current_app
 import re
 
+
 from app.utils.procedures import (
     issue_token,
     call_next_token,
@@ -17,9 +18,13 @@ from app.utils.procedures import (
     get_queue_waiting_count,
     get_estimated_wait_time,
     create_customer_and_token,
+    create_customer_request,
+    update_request_document_status,
+    confirm_customer_request_readiness,
 )
 
-from app.utils.db import execute_query
+
+from app.utils.db import execute_query, get_cursor
 
 
 # ============================================================
@@ -1247,3 +1252,205 @@ def services_list():
         'services.html',
         services=services
     )
+
+# ============================================================
+# CUSTOMER REQUEST APIs
+# ============================================================
+
+@api_bp.route('/customer-requests', methods=['POST'])
+def create_customer_request_api():
+    """Create a draft request for an existing customer."""
+
+    data = request.get_json(silent=True) or {}
+
+    try:
+        customer_id = int(data.get('customer_id'))
+        queue_id = int(data.get('queue_id'))
+
+        if customer_id <= 0 or queue_id <= 0:
+            raise ValueError
+
+    except (TypeError, ValueError):
+        return _safe_error(
+            'Valid customer_id and queue_id are required'
+        )
+
+    try:
+        request_id = create_customer_request(
+            customer_id=customer_id,
+            queue_id=queue_id
+        )
+
+        return jsonify({
+            'request_id': request_id,
+            'customer_id': customer_id,
+            'queue_id': queue_id,
+            'request_status': 'draft',
+            'message': 'Customer request created successfully'
+        }), 201
+
+    except ValueError as error:
+        return _safe_error(str(error), 400)
+
+    except Exception:
+        current_app.logger.exception(
+            'Unable to create customer request'
+        )
+        return _safe_error(
+            'Unable to create customer request',
+            500
+        )
+
+
+@api_bp.route(
+    '/customer-requests/<int:request_id>',
+    methods=['GET']
+)
+def get_customer_request_api(request_id):
+    """Return request details and configured document statuses."""
+
+    try:
+        with get_cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    cr.request_id,
+                    cr.customer_id,
+                    cr.queue_id,
+                    cr.token_id,
+                    cr.request_status,
+                    cr.readiness_confirmed,
+                    cr.created_at,
+                    cr.updated_at,
+                    q.name AS queue_name,
+                    s.name AS service_name
+                FROM customer_request cr
+                JOIN Queue q
+                    ON q.queue_id = cr.queue_id
+                JOIN Service s
+                    ON s.service_id = q.service_id
+                WHERE cr.request_id = %s
+            """, (request_id,))
+
+            customer_request = cursor.fetchone()
+
+            if not customer_request:
+                return _safe_error('Request not found', 404)
+
+            cursor.execute("""
+                SELECT
+                    d.document_id,
+                    d.name AS document_name,
+                    d.description,
+                    sd.is_required,
+                    rd.readiness_status,
+                    rd.confirmed_at
+                FROM request_document rd
+                JOIN document d
+                    ON d.document_id = rd.document_id
+                JOIN customer_request cr
+                    ON cr.request_id = rd.request_id
+                JOIN Queue q
+                    ON q.queue_id = cr.queue_id
+                JOIN service_document sd
+                    ON sd.service_id = q.service_id
+                   AND sd.document_id = d.document_id
+                WHERE rd.request_id = %s
+                  AND d.is_active = 1
+                ORDER BY d.name
+            """, (request_id,))
+
+            documents = cursor.fetchall()
+
+        return jsonify({
+            'request': customer_request,
+            'documents': documents
+        }), 200
+
+    except Exception:
+        current_app.logger.exception(
+            'Unable to retrieve customer request'
+        )
+        return _safe_error(
+            'Unable to retrieve customer request',
+            500
+        )
+
+
+@api_bp.route(
+    '/customer-requests/<int:request_id>/documents',
+    methods=['PATCH']
+)
+def update_customer_request_document_api(request_id):
+    """Update the readiness status of a request document."""
+
+    data = request.get_json(silent=True) or {}
+
+    try:
+        document_id = int(data.get('document_id'))
+
+        if document_id <= 0:
+            raise ValueError
+
+    except (TypeError, ValueError):
+        return _safe_error('A valid document_id is required')
+
+    readiness_status = data.get('readiness_status')
+
+    if readiness_status not in ('available', 'missing'):
+        return _safe_error(
+            "readiness_status must be 'available' or 'missing'"
+        )
+
+    try:
+        update_request_document_status(
+            request_id=request_id,
+            document_id=document_id,
+            readiness_status=readiness_status
+        )
+
+        return jsonify({
+            'request_id': request_id,
+            'document_id': document_id,
+            'readiness_status': readiness_status,
+            'message': 'Document readiness updated'
+        }), 200
+
+    except ValueError as error:
+        return _safe_error(str(error), 400)
+
+    except Exception:
+        current_app.logger.exception(
+            'Unable to update document readiness'
+        )
+        return _safe_error(
+            'Unable to update document readiness',
+            500
+        )
+
+@api_bp.route(
+    '/customer-requests/<int:request_id>/confirm-readiness',
+    methods=['POST']
+)
+def confirm_customer_request_readiness_api(request_id):
+    """Confirm that all required documents are available."""
+    try:
+        confirm_customer_request_readiness(request_id)
+
+        return jsonify({
+            'request_id': request_id,
+            'request_status': 'ready',
+            'readiness_confirmed': True,
+            'message': 'Request readiness confirmed'
+        }), 200
+
+    except ValueError as error:
+        return _safe_error(str(error), 400)
+
+    except Exception:
+        current_app.logger.exception(
+            'Unable to confirm request readiness'
+        )
+        return _safe_error(
+            'Unable to confirm request readiness',
+            500
+        )
