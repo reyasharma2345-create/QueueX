@@ -184,3 +184,110 @@ def test_readiness_confirmed_when_all_required_documents_are_available(
                         "DELETE FROM customer_request WHERE request_id = %s",
                         (request_id,),
                     )
+                
+def test_queueing_request_twice_reuses_existing_token(client, app):
+    from app.utils.db import get_cursor
+
+    request_id = None
+    token_id = None
+
+    try:
+        # Create a fresh draft request.
+        created = client.post(
+            "/api/customer-requests",
+            json={"customer_id": 1, "queue_id": 1},
+        )
+        assert created.status_code == 201, created.get_json()
+        request_id = created.get_json()["request_id"]
+
+        # Mark all required documents as available.
+        details = client.get(f"/api/customer-requests/{request_id}")
+        assert details.status_code == 200, details.get_json()
+
+        for document in details.get_json()["documents"]:
+            updated = client.patch(
+                f"/api/customer-requests/{request_id}/documents",
+                json={
+                    "document_id": document["document_id"],
+                    "readiness_status": "available",
+                },
+            )
+            assert updated.status_code == 200, updated.get_json()
+
+        # Confirm readiness.
+        confirmed = client.post(
+            f"/api/customer-requests/{request_id}/confirm-readiness"
+        )
+        assert confirmed.status_code == 200, confirmed.get_json()
+
+        # Queue the same request twice.
+        first = client.post(f"/api/customer-requests/{request_id}/queue")
+        assert first.status_code == 200, first.get_json()
+        first_result = first.get_json()
+        token_id = first_result["token_id"]
+
+        second = client.post(f"/api/customer-requests/{request_id}/queue")
+        assert second.status_code == 200, second.get_json()
+        second_result = second.get_json()
+
+        # Both calls must return the same token.
+        assert second_result["token_id"] == token_id
+        assert second_result["token_number"] == first_result["token_number"]
+
+        with app.app_context():
+            with get_cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) AS token_count FROM customer_request "
+                    "WHERE request_id = %s AND token_id = %s",
+                    (request_id, token_id),
+                )
+                assert cursor.fetchone()["token_count"] == 1
+
+                cursor.execute(
+                    "SELECT COUNT(*) AS token_count FROM token "
+                    "WHERE token_id = %s",
+                    (token_id,),
+                )
+                assert cursor.fetchone()["token_count"] == 1
+
+    
+    
+    finally:
+        if request_id is not None:
+            with app.app_context():
+                with get_cursor() as cursor:
+                    cursor.execute(
+                        "SELECT token_id FROM customer_request "
+                        "WHERE request_id = %s",
+                        (request_id,),
+                    )
+                    row = cursor.fetchone()
+                    test_token_id = (
+                        row["token_id"] if row else None
+                    )
+
+                    # Delete dependent rows before their parent records.
+                    if test_token_id is not None:
+                        cursor.execute(
+                            "DELETE FROM notification WHERE token_id = %s",
+                            (test_token_id,),
+                        )
+                        cursor.execute(
+                            "DELETE FROM queue_history WHERE token_id = %s",
+                            (test_token_id,),
+                        )
+
+                    cursor.execute(
+                        "DELETE FROM request_document WHERE request_id = %s",
+                        (request_id,),
+                    )
+                    cursor.execute(
+                        "DELETE FROM customer_request WHERE request_id = %s",
+                        (request_id,),
+                    )
+
+                    if test_token_id is not None:
+                        cursor.execute(
+                            "DELETE FROM token WHERE token_id = %s",
+                            (test_token_id,),
+                        )
