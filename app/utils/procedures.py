@@ -513,6 +513,148 @@ def confirm_customer_request_readiness(request_id: int) -> None:
 
         finally:
             cursor.close()
+
+def queue_customer_request(request_id: int) -> Dict[str, Any]:
+    """
+    Issue a queue token for a ready customer request and link it
+    to the request in the same database transaction.
+    """
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+
+        try:
+            # Lock the request so simultaneous calls cannot queue it twice.
+            cursor.execute("""
+                SELECT
+                    cr.request_id,
+                    cr.customer_id,
+                    cr.queue_id,
+                    cr.token_id,
+                    cr.request_status,
+                    cr.readiness_confirmed
+                FROM customer_request cr
+                WHERE cr.request_id = %s
+                FOR UPDATE
+            """, (request_id,))
+
+            customer_request = cursor.fetchone()
+
+            if not customer_request:
+                raise ValueError("Customer request not found")
+
+            # If already queued, return the existing token.
+            if customer_request["token_id"] is not None:
+                cursor.execute("""
+                    SELECT token_id, token_number, queue_id, customer_id
+                    FROM Token
+                    WHERE token_id = %s
+                """, (customer_request["token_id"],))
+
+                existing_token = cursor.fetchone()
+
+                if existing_token:
+                    return {
+                        "request_id": request_id,
+                        "token_id": existing_token["token_id"],
+                        "token_number": existing_token["token_number"],
+                        "queue_id": existing_token["queue_id"],
+                        "request_status": customer_request["request_status"],
+                        "message": "Request already has a token"
+                    }
+
+                raise RuntimeError(
+                    "Request references a token that does not exist"
+                )
+
+            if customer_request["request_status"] != "ready":
+                raise ValueError(
+                    "Only ready requests can be queued"
+                )
+
+            if not customer_request["readiness_confirmed"]:
+                raise ValueError(
+                    "Request readiness has not been confirmed"
+                )
+
+            # Ensure every required document is available.
+            cursor.execute("""
+                SELECT COUNT(*) AS incomplete_count
+                FROM service_document sd
+                JOIN Queue q
+                    ON q.service_id = sd.service_id
+                JOIN customer_request cr
+                    ON cr.queue_id = q.queue_id
+                LEFT JOIN request_document rd
+                    ON rd.request_id = cr.request_id
+                   AND rd.document_id = sd.document_id
+                WHERE cr.request_id = %s
+                  AND sd.is_required = 1
+                  AND (
+                      rd.document_id IS NULL
+                      OR rd.readiness_status <> 'available'
+                  )
+            """, (request_id,))
+
+            result = cursor.fetchone()
+
+            if result["incomplete_count"] > 0:
+                raise ValueError(
+                    "All required documents must be available"
+                )
+
+            # Reuse the existing stored procedure on this connection.
+            cursor.execute(
+                "CALL issue_token(%s, %s, @p_token_id, @p_token_number)",
+                (
+                    customer_request["queue_id"],
+                    customer_request["customer_id"]
+                )
+            )
+
+            # Consume the procedure's result sets before further queries.
+            cursor.fetchall()
+            while cursor.nextset():
+                pass
+
+            cursor.execute("""
+                SELECT
+                    @p_token_id AS token_id,
+                    @p_token_number AS token_number
+            """)
+            token = cursor.fetchone()
+
+            if not token or token["token_id"] is None:
+                raise RuntimeError("Token creation failed")
+
+            # Link the token and change the request status.
+            cursor.execute("""
+                UPDATE customer_request
+                SET token_id = %s,
+                    request_status = 'queued',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE request_id = %s
+                  AND token_id IS NULL
+                  AND request_status = 'ready'
+            """, (token["token_id"], request_id))
+
+            if cursor.rowcount != 1:
+                raise RuntimeError(
+                    "Could not link token to customer request"
+                )
+
+            return {
+                "request_id": request_id,
+                "token_id": token["token_id"],
+                "token_number": token["token_number"],
+                "queue_id": customer_request["queue_id"],
+                "request_status": "queued",
+                "message": "Customer request queued successfully"
+            }
+
+        finally:
+            cursor.close()
+
+
 create_customer_request
 
 update_request_document_status

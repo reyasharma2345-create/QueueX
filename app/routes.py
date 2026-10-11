@@ -7,7 +7,6 @@ API and Web route definitions.
 from flask import Blueprint, request, jsonify, render_template, current_app
 import re
 
-
 from app.utils.procedures import (
     issue_token,
     call_next_token,
@@ -21,6 +20,7 @@ from app.utils.procedures import (
     create_customer_request,
     update_request_document_status,
     confirm_customer_request_readiness,
+    queue_customer_request,
 )
 
 
@@ -1452,5 +1452,27 @@ def confirm_customer_request_readiness_api(request_id):
         )
         return _safe_error(
             'Unable to confirm request readiness',
+            500
+        )
+
+@api_bp.route(
+    '/customer-requests/<int:request_id>/queue',
+    methods=['POST']
+)
+def queue_customer_request_api(request_id):
+    """Issue a token for a ready customer request."""
+    try:
+        result = queue_customer_request(request_id)
+        return jsonify(result), 200
+
+    except ValueError as error:
+        return _safe_error(str(error), 400)
+
+    except Exception:
+        current_app.logger.exception(
+            'Unable to queue customer request'
+        )
+        return _safe_error(
+            'Unable to queue customer request',
             500
         )
