@@ -95,3 +95,24 @@ VALUES
     (3, 'Rohan Deshmukh', '9000000003', 'rohan@example.com'),
     (4, 'Sneha Kulkarni', '9000000004', 'sneha@example.com'),
     (5, 'Vikram Joshi', '9000000005', 'vikram@example.com');
+    -- ============================================================
+-- 7. DOCUMENT MASTER
+-- ============================================================
+
+INSERT INTO `document`
+    (`document_id`, `name`, `is_active`)
+VALUES
+    (1, 'Identity Proof', TRUE),
+    (2, 'Address Proof', TRUE),
+    (3, 'PAN Card', TRUE);
+
+-- ============================================================
+-- 8. SERVICE DOCUMENT MAPPINGS
+-- ============================================================
+
+INSERT INTO `service_document`
+    (`service_id`, `document_id`, `is_required`)
+VALUES
+    (1, 1, TRUE),
+    (1, 2, TRUE),
+    (1, 3, TRUE);
