@@ -12,28 +12,9 @@ def test_concurrent_token_requests_receive_unique_numbers(app):
     queue_id = 1
     test_tag = uuid.uuid4().hex[:12]
     customer_ids = []
-
-    # Create isolated test customers in the test database.
-    with app.app_context():
-        with get_cursor() as cursor:
-            for number in range(2):
-                cursor.execute(
-                    """
-                    INSERT INTO Customer (full_name, phone, email)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (
-                        f"Concurrency Test {test_tag} {number}",
-                        f"CT{test_tag[:10]}{number}",
-                        f"{test_tag}{number}@example.invalid",
-                    ),
-                )
-                customer_ids.append(cursor.lastrowid)
-
     barrier = threading.Barrier(2)
 
     def request_token(customer_id):
-        # Each worker gets its own Flask test client.
         with app.test_client() as client:
             barrier.wait(timeout=10)
             return client.post(
@@ -45,6 +26,23 @@ def test_concurrent_token_requests_receive_unique_numbers(app):
             )
 
     try:
+        # Create and track isolated customers inside the protected block.
+        with app.app_context():
+            with get_cursor() as cursor:
+                for number in range(2):
+                    cursor.execute(
+                        """
+                        INSERT INTO Customer (full_name, phone, email)
+                        VALUES (%s, %s, %s)
+                        """,
+                        (
+                            f"Concurrency Test {test_tag} {number}",
+                            f"CT{test_tag[:10]}{number}",
+                            f"{test_tag}{number}@example.invalid",
+                        ),
+                    )
+                    customer_ids.append(cursor.lastrowid)
+
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = [
                 executor.submit(request_token, customer_id)
@@ -71,7 +69,6 @@ def test_concurrent_token_requests_receive_unique_numbers(app):
         assert len(set(token_ids)) == 2, token_ids
         assert len(set(token_numbers)) == 2, token_numbers
 
-        # Confirm the numbers are actually stored for queue 1.
         with app.app_context():
             with get_cursor() as cursor:
                 cursor.execute(
@@ -91,61 +88,66 @@ def test_concurrent_token_requests_receive_unique_numbers(app):
         assert len({row["token_number"] for row in stored_tokens}) == 2
 
     finally:
-        # Cleanup only records belonging to our uniquely named customers.
-        with app.app_context():
-            with get_cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT token_id
-                    FROM Token
-                    WHERE customer_id IN (%s, %s)
-                    """,
-                    tuple(customer_ids),
-                )
-                token_ids_to_delete = [
-                    row["token_id"] for row in cursor.fetchall()
-                ]
-
-                if token_ids_to_delete:
-                    placeholders = ", ".join(
-                        ["%s"] * len(token_ids_to_delete)
-                    )
-                    params = tuple(token_ids_to_delete)
+        # Clean up only records associated with customers created by this test.
+        if customer_ids:
+            with app.app_context():
+                with get_cursor() as cursor:
+                    placeholders = ", ".join(["%s"] * len(customer_ids))
+                    customer_params = tuple(customer_ids)
 
                     cursor.execute(
                         f"""
-                        DELETE FROM Queue_History
-                        WHERE token_id IN ({placeholders})
+                        SELECT token_id
+                        FROM Token
+                        WHERE customer_id IN ({placeholders})
                         """,
-                        params,
+                        customer_params,
                     )
-                    cursor.execute(
-                        f"""
-                        DELETE FROM Notification
-                        WHERE customer_id IN (%s, %s)
-                        """,
-                        tuple(customer_ids),
-                    )
-                    cursor.execute(
-                        f"""
-                        DELETE FROM Token
-                        WHERE token_id IN ({placeholders})
-                        """,
-                        params,
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        DELETE FROM Notification
-                        WHERE customer_id IN (%s, %s)
-                        """,
-                        tuple(customer_ids),
-                    )
+                    token_ids_to_delete = [
+                        row["token_id"] for row in cursor.fetchall()
+                    ]
 
-                cursor.execute(
-                    """
-                    DELETE FROM Customer
-                    WHERE customer_id IN (%s, %s)
-                    """,
-                    tuple(customer_ids),
-                )
+                    if token_ids_to_delete:
+                        token_placeholders = ", ".join(
+                            ["%s"] * len(token_ids_to_delete)
+                        )
+                        token_params = tuple(token_ids_to_delete)
+
+                        cursor.execute(
+                            f"""
+                            DELETE FROM Queue_History
+                            WHERE token_id IN ({token_placeholders})
+                            """,
+                            token_params,
+                        )
+                        cursor.execute(
+                            f"""
+                            DELETE FROM Notification
+                            WHERE token_id IN ({token_placeholders})
+                               OR customer_id IN ({placeholders})
+                            """,
+                            token_params + customer_params,
+                        )
+                        cursor.execute(
+                            f"""
+                            DELETE FROM Token
+                            WHERE token_id IN ({token_placeholders})
+                            """,
+                            token_params,
+                        )
+                    else:
+                        cursor.execute(
+                            f"""
+                            DELETE FROM Notification
+                            WHERE customer_id IN ({placeholders})
+                            """,
+                            customer_params,
+                        )
+
+                    cursor.execute(
+                        f"""
+                        DELETE FROM Customer
+                        WHERE customer_id IN ({placeholders})
+                        """,
+                        customer_params,
+                    )
