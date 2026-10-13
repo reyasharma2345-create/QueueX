@@ -3,7 +3,7 @@ QueueX Route Blueprints
 
 API and Web route definitions.
 """
-
+from mysql.connector import Error as MySQLError
 from flask import Blueprint, request, jsonify, render_template, current_app
 import re
 
@@ -351,18 +351,31 @@ def get_queue(queue_id: int):
 # TOKEN APIs
 # ============================================================
 
+
 @api_bp.route('/tokens', methods=['POST'])
 def create_token():
     """Issue a new token for a customer."""
 
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
 
     queue_id = data.get('queue_id')
     customer_id = data.get('customer_id')
 
-    if not queue_id or not customer_id:
+    # Validate that both IDs are positive integers.
+    try:
+        if isinstance(queue_id, bool) or isinstance(customer_id, bool):
+            raise ValueError
+
+        queue_id = int(queue_id)
+        customer_id = int(customer_id)
+
+        if queue_id <= 0 or customer_id <= 0:
+            raise ValueError
+
+    except (TypeError, ValueError):
         return _safe_error(
-            'queue_id and customer_id required'
+            'Valid queue_id and customer_id are required',
+            400
         )
 
     try:
@@ -373,14 +386,41 @@ def create_token():
 
         return jsonify(result), 201
 
-    except Exception:
+    except MySQLError as exc:
+        # These errors represent expected invalid-input rejections:
+        # 1644: SIGNAL raised by the stored procedure.
+        # 1452: Foreign-key violation, e.g. nonexistent customer.
+        if getattr(exc, 'errno', None) in (1644, 1452):
+            current_app.logger.warning(
+                'Token creation rejected (database error %s)',
+                exc.errno
+            )
+
+            return _safe_error(
+                'Unable to create token',
+                400
+            )
+
+        # Other database failures are server errors, not bad requests.
         current_app.logger.exception(
-            'Unable to create token'
+            'Database error while creating token'
         )
 
         return _safe_error(
-            'Unable to create token'
+            'Unable to create token',
+            500
         )
+
+    except Exception:
+        current_app.logger.exception(
+            'Unexpected error creating token'
+        )
+
+        return _safe_error(
+            'Unable to create token',
+            500
+        )
+
 
 
 # ============================================================
