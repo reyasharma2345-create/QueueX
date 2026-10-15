@@ -601,6 +601,7 @@ def call_token(token_id: int):
                     staff_id = %s,
                     called_at = CURRENT_TIMESTAMP
                 WHERE token_id = %s
+                AND status = 'waiting'
                 """,
                 (
                     counter_id,
@@ -608,6 +609,14 @@ def call_token(token_id: int):
                     token_id
                 )
             )
+            if cursor.rowcount != 1:
+                return jsonify({
+                    "error": (
+                        "Token is not in waiting status "
+                        "(current status cannot be changed)"
+                    )
+                }), 400
+
 
             cursor.execute(
                 """
