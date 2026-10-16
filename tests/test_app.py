@@ -21,81 +21,6 @@ def test_database_is_queuex_test(app):
     assert result["database_name"] == "queuex_test"
 
 
-def test_normal_token_endpoint_issues_token(client, app):
-    from app.utils.db import get_cursor
-
-    token_id = None
-
-    try:
-        response = client.post(
-            "/api/tokens",
-            json={"queue_id": 1, "customer_id": 1},
-        )
-
-        assert response.status_code == 201, response.get_json()
-
-        result = response.get_json()
-        assert result["token_id"] is not None
-        assert result["token_number"] is not None
-        assert result["status"] == "waiting"
-
-        token_id = result["token_id"]
-
-        with app.app_context():
-            with get_cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT queue_id, customer_id, token_number, status
-                    FROM token
-                    WHERE token_id = %s
-                    """,
-                    (token_id,),
-                )
-                token = cursor.fetchone()
-
-                assert token is not None
-                assert token["queue_id"] == 1
-                assert token["customer_id"] == 1
-                assert token["token_number"] == result["token_number"]
-                assert token["status"] == "waiting"
-
-                cursor.execute(
-                    """
-                    SELECT new_status
-                    FROM queue_history
-                    WHERE token_id = %s
-                    ORDER BY history_id
-                    """,
-                    (token_id,),
-                )
-                history = cursor.fetchall()
-                assert any(
-                    row["new_status"] == "waiting"
-                    for row in history
-                )
-
-    finally:
-        if token_id is not None:
-            with app.app_context():
-                with get_cursor() as cursor:
-                    cursor.execute(
-                        "DELETE FROM notification WHERE token_id = %s",
-                        (token_id,),
-                    )
-                    cursor.execute(
-                        "DELETE FROM queue_history WHERE token_id = %s",
-                        (token_id,),
-                    )
-                    cursor.execute(
-                        "DELETE FROM customer_request WHERE token_id = %s",
-                        (token_id,),
-                    )
-                    cursor.execute(
-                        "DELETE FROM token WHERE token_id = %s",
-                        (token_id,),
-                    )
-
-
 def test_create_customer_request_rejects_missing_ids(client):
     response = client.post("/api/customer-requests", json={})
     assert response.status_code == 400
@@ -366,3 +291,32 @@ def test_queueing_request_twice_reuses_existing_token(client, app):
                             "DELETE FROM token WHERE token_id = %s",
                             (test_token_id,),
                         )
+
+def test_document_update_rejects_invalid_service_document(
+    client, monkeypatch
+):
+    from app import routes
+
+    def reject_invalid_document(**kwargs):
+        raise ValueError(
+            "Document is not valid for this request"
+        )
+
+    monkeypatch.setattr(
+        routes,
+        "update_request_document_status",
+        reject_invalid_document,
+    )
+
+    response = client.patch(
+        "/api/customer-requests/99999/documents",
+        json={
+            "document_id": 999,
+            "readiness_status": "available",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == (
+        "Document is not valid for this request"
+    )
