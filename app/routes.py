@@ -1,10 +1,18 @@
-"""
+﻿"""
 QueueX Route Blueprints
 
 API and Web route definitions.
 """
 from mysql.connector import Error as MySQLError
-from flask import Blueprint, request, jsonify, render_template, current_app
+from flask import (
+    Blueprint,
+    request,
+    jsonify,
+    render_template,
+    current_app,
+    session,
+)
+from app.utils.auth import require_permission
 import re
 
 from app.utils.procedures import (
@@ -516,18 +524,21 @@ def get_token(token_id: int):
 # ============================================================
 
 @api_bp.route('/tokens/<int:token_id>/call', methods=['POST'])
+@require_permission("queue_operate")
 def call_token(token_id: int):
     """Call a specific token."""
-
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
 
     counter_id = data.get('counter_id')
-    staff_id = data.get('staff_id')
-
+    account = session.get('account', {})
+    staff_id = account.get('staff_id') if isinstance(account, dict) else None
     if not counter_id or not staff_id:
-        return _safe_error(
-            'counter_id and staff_id required'
-        )
+      return _safe_error(
+        'counter_id required'
+    )
+
+
+
 
     # Validate staff + counter
     staff_counter = _validate_staff_for_counter(
@@ -661,17 +672,21 @@ def call_token(token_id: int):
     '/counters/<int:counter_id>/call-next',
     methods=['POST']
 )
+
+@require_permission("queue_operate")
+
 def call_next_token_endpoint(counter_id: int):
     """Call the next waiting token for a counter."""
-
-    data = request.get_json() or {}
-
-    staff_id = data.get('staff_id')
+    account = session.get('account', {})
+    staff_id = account.get('staff_id') if isinstance(account, dict) else None
 
     if not staff_id:
-        return _safe_error(
-            'staff_id required'
-        )
+     return _safe_error(
+        'Authentication required',
+        401
+    )
+
+
 
     # Validate staff + counter before calling next token
     staff_counter = _validate_staff_for_counter(
@@ -716,6 +731,8 @@ def call_next_token_endpoint(counter_id: int):
     '/tokens/<int:token_id>/complete',
     methods=['POST']
 )
+@require_permission("queue_operate")
+
 def complete_token_endpoint(token_id: int):
     """Mark a token as completed."""
 
@@ -758,6 +775,7 @@ def complete_token_endpoint(token_id: int):
     '/tokens/<int:token_id>/serve',
     methods=['POST']
 )
+@require_permission("queue_operate")
 def serve_token_endpoint(token_id: int):
     """Mark a called token as serving."""
 
@@ -800,6 +818,7 @@ def serve_token_endpoint(token_id: int):
     '/tokens/<int:token_id>/no-show',
     methods=['POST']
 )
+@require_permission("queue_operate")
 def no_show_token(token_id: int):
     """Mark a called token as no-show."""
 

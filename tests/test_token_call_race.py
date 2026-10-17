@@ -1,7 +1,8 @@
+
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-import uuid
+from unittest.mock import patch
 
 from app.utils.db import get_cursor
 
@@ -13,8 +14,18 @@ def test_simultaneous_calls_only_call_token_once(app):
     token_id = None
     barrier = threading.Barrier(2)
 
+    account = {
+        "account_id": 1,
+        "staff_id": 2,
+        "username": "test_staff",
+        "full_name": "Test Staff",
+        "branch_id": 1,
+        "role_id": 2,
+        "role_name": "staff",
+    }
+
     try:
-        # Create a unique customer and waiting token.
+        # Create a unique customer and waiting token in the test database.
         with app.app_context():
             with get_cursor() as cursor:
                 cursor.execute(
@@ -63,23 +74,45 @@ def test_simultaneous_calls_only_call_token_once(app):
 
         def call_token():
             with app.test_client() as test_client:
+                with test_client.session_transaction() as session:
+                    session["account"] = account
+                    session["permissions"] = ["queue_operate"]
+
+                # Synchronize both clients immediately before the request.
                 barrier.wait(timeout=10)
-                return test_client.post(
-                    f"/api/tokens/{token_id}/call",
-                    json={"counter_id": 1, "staff_id": 2},
-                )
+
+                # Mock authorization verification only. The token operation
+                # and its concurrency behavior still use the real test DB.
+                with patch(
+                    "app.utils.auth.get_current_session_account",
+                    return_value=account,
+                ), patch(
+                    "app.utils.auth.get_user_permissions",
+                    return_value={"queue_operate"},
+                ):
+                    return test_client.post(
+                        f"/api/tokens/{token_id}/call",
+                        json={
+                            "counter_id": 1,
+                            # Deliberately forged; the server must use
+                            # the staff_id stored in the session.
+                            "staff_id": 999999,
+                        },
+                    )
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = [
                 executor.submit(call_token),
                 executor.submit(call_token),
             ]
-            responses = [future.result(timeout=30) for future in futures]
+            responses = [
+                future.result(timeout=30) for future in futures
+            ]
 
-        # Exactly one call should succeed; the other must be rejected.
-        assert sorted(response.status_code for response in responses) == [
-            200, 400
-        ], [
+        # Exactly one request should succeed; the other must be rejected.
+        assert sorted(
+            response.status_code for response in responses
+        ) == [200, 400], [
             (response.status_code, response.get_json())
             for response in responses
         ]
@@ -114,6 +147,7 @@ def test_simultaneous_calls_only_call_token_once(app):
         assert history_count == 1
 
     finally:
+        # Clean up only the unique records created by this test.
         if token_id is not None:
             with app.app_context():
                 with get_cursor() as cursor:
