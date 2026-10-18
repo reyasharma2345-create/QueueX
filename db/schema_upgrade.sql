@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS customer_account (
         REFERENCES customer(customer_id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
 
 -- 3. DOCUMENT MASTER
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS document (
     description TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
 
 -- 4. SERVICE DOCUMENT
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS service_document (
         REFERENCES document(document_id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
 
 -- 5. CUSTOMER REQUEST
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS customer_request (
         REFERENCES token(token_id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
 
 
@@ -134,4 +134,4 @@ CREATE TABLE IF NOT EXISTS request_document (
         REFERENCES document(document_id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;

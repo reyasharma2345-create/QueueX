@@ -242,6 +242,50 @@ def require_permission(permission: str):
     return decorator
 
 
+def require_customer_permission(permission: str):
+    """Protect a route using current database-backed customer permissions."""
+
+    def decorator(view_function):
+        @wraps(view_function)
+        def wrapped(*args, **kwargs):
+            account = session.get("account")
+
+            if not isinstance(account, dict):
+                return jsonify({"error": "Authentication required"}), 401
+
+            if account.get("role_name") != "customer":
+                return jsonify({"error": "Customer authentication required"}), 401
+
+            account_id = account.get("account_id")
+
+            try:
+                current_account = get_current_session_customer(account_id)
+
+                if current_account is None:
+                    session.clear()
+                    return jsonify({"error": "Authentication required"}), 401
+
+                permissions = get_customer_permissions(account_id)
+
+            except Exception:
+                # Fail closed if the database cannot verify authorization.
+                return jsonify({"error": "Unable to verify authorization"}), 503
+
+            if permission not in permissions:
+                session["account"] = current_account
+                session["permissions"] = sorted(permissions)
+                return jsonify({"error": "Permission denied"}), 403
+
+            session["account"] = current_account
+            session["permissions"] = sorted(permissions)
+
+            return view_function(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
 def get_current_session_account(account_id: int):
     """Return the current safe account record only if it remains active."""
     if isinstance(account_id, bool) or not isinstance(account_id, int):
@@ -291,4 +335,115 @@ def get_current_session_account(account_id: int):
         "branch_id": account["branch_id"],
         "role_id": account["role_id"],
         "role_name": account["role_name"],
+    }
+
+
+def authenticate_customer(username: str, password: str):
+    """
+    Authenticate an active customer account.
+
+    Return a safe account dictionary on success, otherwise None.
+    Never return the stored password hash.
+    """
+    if not isinstance(username, str) or not isinstance(password, str):
+        return None
+
+    username = username.strip()
+
+    if not username or not password:
+        return None
+
+    rows = execute_query(
+        """
+        SELECT
+            ca.account_id,
+            ca.customer_id,
+            ca.username,
+            ca.password_hash,
+            ca.is_active AS account_active,
+            c.full_name
+        FROM customer_account ca
+        JOIN Customer c
+            ON c.customer_id = ca.customer_id
+        WHERE ca.username = %s
+        LIMIT 1
+        """,
+        (username,),
+        fetch=True,
+    )
+
+    if not rows:
+        return None
+
+    account = rows[0]
+
+    if account["account_active"] != 1:
+        return None
+
+    if not verify_password(password, account["password_hash"]):
+        return None
+
+    return {
+        "account_id": account["account_id"],
+        "customer_id": account["customer_id"],
+        "username": account["username"],
+        "full_name": account["full_name"],
+        "role_name": "customer",
+    }
+
+
+def get_customer_permissions(account_id: int) -> set[str]:
+    """Return permissions for an active customer account."""
+    if isinstance(account_id, bool) or not isinstance(account_id, int):
+        return set()
+
+    if account_id <= 0:
+        return set()
+
+    # Customers get basic permissions
+    return {
+        "customer:read",
+        "customer:manage_own",
+    }
+
+
+def get_current_session_customer(account_id: int):
+    """Return the current safe customer account record only if it remains active."""
+    if isinstance(account_id, bool) or not isinstance(account_id, int):
+        return None
+
+    if account_id <= 0:
+        return None
+
+    rows = execute_query(
+        """
+        SELECT
+            ca.account_id,
+            ca.customer_id,
+            ca.username,
+            ca.is_active AS account_active,
+            c.full_name
+        FROM customer_account ca
+        JOIN Customer c ON c.customer_id = ca.customer_id
+        WHERE ca.account_id = %s
+        LIMIT 1
+        """,
+        (account_id,),
+        fetch=True,
+    )
+
+    if not rows:
+        return None
+
+    account = rows[0]
+
+    if account["account_active"] != 1:
+        return None
+
+    return {
+        "account_id": account["account_id"],
+        "customer_id": account["customer_id"],
+        "username": account["username"],
+        "full_name": account["full_name"],
+        "role_name": "customer",
     }

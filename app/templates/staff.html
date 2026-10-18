@@ -3,81 +3,265 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Staff - QueueX</title>
+    <title>QueueX - Staff Portal</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; min-height: 100vh; padding: 20px; }
-        .container { max-width: 1000px; margin: 0 auto; }
-        header { background: #7c3aed; color: white; padding: 24px; border-radius: 8px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
-        h1 { font-size: 28px; font-weight: 600; }
-        .subtitle { opacity: 0.9; margin-top: 4px; font-size: 14px; }
-        .btn { display: inline-block; padding: 10px 20px; background: white; color: #7c3aed; border: none; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600; cursor: pointer; }
-        .btn:hover { background: #f5f3ff; }
-        .card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 16px; text-align: left; border-bottom: 1px solid #e5e7eb; }
-        th { background: #f9fafb; font-weight: 600; font-size: 13px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
-        td { font-size: 14px; color: #1f2937; }
-        tr:last-child td { border-bottom: none; }
-        tr:hover td { background: #f9fafb; }
-        .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-        .badge-active { background: #d1fae5; color: #065f46; }
-        .badge-inactive { background: #fee2e2; color: #991b1b; }
-        .badge-admin { background: #e0e7ff; color: #3730a3; }
-        .badge-staff { background: #f3f4f6; color: #374151; }
-        .empty { text-align: center; color: #9ca3af; padding: 40px; }
-        .back-link { display: inline-block; margin-top: 24px; color: #2563eb; text-decoration: none; }
+        .container { max-width: 600px; margin: 40px auto; }
+        .header { background: #7c3aed; color: white; padding: 30px; border-radius: 10px; text-align: center; margin-bottom: 24px; }
+        .header h1 { font-size: 30px; }
+        .header p { margin-top: 6px; opacity: 0.9; }
+        .card { background: white; padding: 24px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1); margin-bottom: 20px; }
+        .card h2 { color: #5b21b6; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
+        .field { margin-bottom: 18px; }
+        label { display: block; margin-bottom: 7px; font-weight: 600; color: #374151; }
+        input, select { width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 15px; }
+        input:focus, select:focus { outline: none; border-color: #7c3aed; }
+        button { width: 100%; padding: 13px; background: #7c3aed; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; }
+        button:hover:not(:disabled) { background: #6d28d9; }
+        button:disabled { background: #9ca3af; cursor: not-allowed; }
+        .btn-secondary { background: #6b7280; }
+        .btn-secondary:hover:not(:disabled) { background: #4b5563; }
+        .message { margin-top: 18px; padding: 15px; border-radius: 6px; display: none; text-align: center; }
+        .success { display: block; background: #d1fae5; color: #065f46; }
+        .error { display: block; background: #fee2e2; color: #991b1b; }
+        .step { display: none; }
+        .step.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .step-indicator { display: flex; justify-content: center; gap: 8px; margin-bottom: 24px; }
+        .step-dot { width: 12px; height: 12px; border-radius: 50%; background: #e5e7eb; transition: all 0.3s; }
+        .step-dot.active { background: #7c3aed; transform: scale(1.2); }
+        .step-dot.completed { background: #10b981; }
+        .counter-card { display: flex; align-items: center; justify-content: space-between; padding: 16px; background: #f9fafb; border-radius: 8px; margin-bottom: 12px; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; }
+        .counter-card:hover { background: #f3f4f6; border-color: #7c3aed; }
+        .counter-card.selected { border-color: #7c3aed; background: #f5f3ff; }
+        .counter-info { flex: 1; }
+        .counter-name { font-weight: 600; color: #1f2937; font-size: 16px; }
+        .counter-details { font-size: 13px; color: #6b7280; margin-top: 4px; }
+        .counter-badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; background: #e0e7ff; color: #3730a3; }
+        .counter-badge.active { background: #d1fae5; color: #065f46; }
+        .back-link { display: block; margin-top: 20px; text-align: center; color: #7c3aed; text-decoration: none; }
         .back-link:hover { text-decoration: underline; }
+        .hidden { display: none !important; }
+        @media (max-width: 500px) { .container { margin: 20px auto; } }
     </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <div>
-                <h1>Staff Members</h1>
-                <p class="subtitle">All active staff</p>
-            </div>
-            <a href="/" class="btn">← Back to Dashboard</a>
-        </header>
-        
-        <div class="card">
-            {% if staff %}
-            <table>
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Username</th>
-                        <th>Email</th>
-                        <th>Branch</th>
-                        <th>Role</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for s in staff %}
-                    <tr>
-                        <td>{{ s.full_name }}</td>
-                        <td>{{ s.username }}</td>
-                        <td>{{ s.email if s.email else '—' }}</td>
-                        <td>{{ s.branch_name }}</td>
-                        <td>
-                            <span class="badge {% if s.role == 'admin' %}badge-admin{% else %}badge-staff{% endif %}">
-                                {{ s.role }}
-                            </span>
-                        </td>
-                        <td>
-                            <span class="badge {% if s.is_active %}badge-active{% else %}badge-inactive{% endif %}">
-                                {% if s.is_active %}Active{% else %}Inactive{% endif %}
-                            </span>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="empty">No active staff found</div>
-            {% endif %}
+        <div class="header">
+            <h1>QueueX</h1>
+            <p id="header-subtitle">Staff Portal</p>
         </div>
+
+        <!-- LOGIN STEP -->
+        <div id="step-login" class="step active">
+            <div class="card">
+                <form id="login-form">
+                    <div class="field">
+                        <label for="login-username">Username</label>
+                        <input type="text" id="login-username" placeholder="Enter your username" required autocomplete="username">
+                    </div>
+                    <div class="field">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" placeholder="Enter your password" required autocomplete="current-password">
+                    </div>
+                    <div id="login-message" class="message"></div>
+                    <button type="submit" id="login-btn">Sign In</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- SELECT COUNTER STEP -->
+        <div id="step-counter" class="step">
+            <div class="card">
+                <div class="step-indicator">
+                    <div class="step-dot completed" data-step="1"></div>
+                    <div class="step-dot active" data-step="2"></div>
+                </div>
+                <h2>Select Your Counter</h2>
+                <div id="selected-staff-display" style="padding: 12px; background: #f5f3ff; border-radius: 8px; margin-bottom: 16px; font-size: 14px; color: #5b21b6;"></div>
+                <div id="counter-list"></div>
+                <div id="counter-message" class="message"></div>
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                    <button type="button" class="btn-secondary" id="counter-back">Back</button>
+                    <button type="button" id="counter-select-btn" style="flex: 1;" disabled>Continue to Counter</button>
+                </div>
+            </div>
+        </div>
+
+        <a href="/" class="back-link">← Back to Dashboard</a>
     </div>
+
+<script>
+    // ==========================================
+    // STATE MANAGEMENT
+    // ==========================================
+    let currentState = {
+        user: null,
+        counters: [],
+        selectedCounterId: null
+    };
+
+    // ==========================================
+    // UTILITY FUNCTIONS
+    // ==========================================
+    function showMessage(elementId, text, isError = false) {
+        const el = document.getElementById(elementId);
+        el.textContent = text;
+        el.className = 'message ' + (isError ? 'error' : 'success');
+    }
+
+    function hideMessage(elementId) {
+        document.getElementById(elementId).className = 'message';
+    }
+
+    function showStep(stepName) {
+        document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+        document.getElementById(stepName).classList.add('active');
+        window.scrollTo(0, 0);
+    }
+
+    function updateStepDots(currentStep) {
+        document.querySelectorAll('.step-dot').forEach((dot, idx) => {
+            dot.classList.remove('active', 'completed');
+            if (idx < currentStep) dot.classList.add('completed');
+            else if (idx === currentStep) dot.classList.add('active');
+        });
+    }
+
+    function apiRequest(url, options = {}) {
+        return fetch(url, {
+            headers: { 'Content-Type': 'application/json', ...options.headers },
+            credentials: 'same-origin',
+            ...options
+        });
+    }
+
+    function setLoading(btn, isLoading) {
+        btn.disabled = isLoading;
+        if (isLoading) btn.dataset.originalText = btn.textContent;
+        btn.textContent = isLoading ? (btn.dataset.loadingText || 'Loading...') : btn.dataset.originalText;
+    }
+
+    // ==========================================
+    // LOGIN STEP
+    // ==========================================
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('login-btn');
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value;
+
+        setLoading(btn, true);
+        hideMessage('login-message');
+
+        try {
+            const res = await apiRequest('/api/auth/login', {
+                method: 'POST',
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Login failed');
+            }
+
+            currentState.user = data.account;
+            showMessage('login-message', `Welcome, ${data.account.full_name}!`);
+
+            setTimeout(() => {
+                setLoading(btn, false);
+                loadCounters();
+                showStep('step-counter');
+                updateStepDots(1);
+            }, 500);
+
+        } catch (err) {
+            setLoading(btn, false);
+            showMessage('login-message', err.message, true);
+        }
+    });
+
+    // ==========================================
+    // COUNTER STEP
+    // ==========================================
+    async function loadCounters() {
+        document.getElementById('selected-staff-display').textContent = `Logged in as: ${currentState.user.full_name} (${currentState.user.username})`;
+
+        try {
+            const res = await apiRequest('/api/staff/counters');
+            const counters = await res.json();
+
+            currentState.counters = counters;
+            const container = document.getElementById('counter-list');
+            container.innerHTML = '';
+
+            if (!counters.length) {
+                container.innerHTML = '<div style="text-align: center; color: #9ca3af; padding: 40px;">No active counters assigned to your branch</div>';
+                return;
+            }
+
+            counters.forEach(counter => {
+                const card = document.createElement('div');
+                card.className = 'counter-card';
+                card.dataset.counterId = counter.counter_id;
+                card.innerHTML = `
+                    <div class="counter-info">
+                        <div class="counter-name">${counter.name}</div>
+                        <div class="counter-details">${counter.branch_name} • ${counter.queue_name}</div>
+                    </div>
+                    <span class="counter-badge ${counter.is_active ? 'active' : ''}">${counter.is_active ? 'Active' : 'Inactive'}</span>
+                `;
+                card.addEventListener('click', () => selectCounter(counter));
+                container.appendChild(card);
+            });
+
+        } catch (err) {
+            showMessage('counter-message', 'Failed to load counters', true);
+        }
+    }
+
+    function selectCounter(counter) {
+        if (!counter.is_active) {
+            showMessage('counter-message', 'This counter is not active', true);
+            return;
+        }
+        currentState.selectedCounterId = counter.counter_id;
+        document.querySelectorAll('.counter-card').forEach(c => c.classList.remove('selected'));
+        document.querySelector(`.counter-card[data-counter-id="${counter.counter_id}"]`).classList.add('selected');
+        document.getElementById('counter-select-btn').disabled = false;
+        hideMessage('counter-message');
+    }
+
+    document.getElementById('counter-select-btn').addEventListener('click', () => {
+        if (!currentState.selectedCounterId) return;
+        window.location.href = `/counter/${currentState.selectedCounterId}`;
+    });
+
+    document.getElementById('counter-back').addEventListener('click', () => {
+        showStep('step-login');
+        updateStepDots(0);
+    });
+
+    // ==========================================
+    // INITIALIZE
+    // ==========================================
+    document.addEventListener('DOMContentLoaded', () => {
+        apiRequest('/api/auth/me')
+            .then(res => res.json())
+            .then(data => {
+                if (data.account && data.account.account_type === 'staff') {
+                    currentState.user = data.account;
+                    loadCounters();
+                    showStep('step-counter');
+                    updateStepDots(1);
+                }
+            })
+            .catch(() => {
+                // No session, stay on login
+            });
+    });
+</script>
 </body>
 </html>

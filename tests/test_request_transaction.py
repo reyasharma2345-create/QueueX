@@ -1,4 +1,3 @@
-
 def test_queue_request_rolls_back_token_if_linking_fails(
     client, app, monkeypatch
 ):
@@ -6,11 +5,21 @@ def test_queue_request_rolls_back_token_if_linking_fails(
     from app.utils import procedures
     from app.utils.db import get_cursor
 
+    def _login_customer(client, username="aarav", password="password123"):
+        """Helper to log in a customer and return the session."""
+        response = client.post(
+            "/api/auth/customer/login",
+            json={"username": username, "password": password},
+        )
+        assert response.status_code == 200
+        return response.get_json()
+
     request_id = None
     token_ids_before = set()
 
     try:
         # 1. Create a customer request.
+        _login_customer(client)
         created = client.post(
             "/api/customer-requests",
             json={"customer_id": 1, "queue_id": 1},
@@ -44,7 +53,7 @@ def test_queue_request_rolls_back_token_if_linking_fails(
         # 5. Record the existing tokens and queue counter.
         with app.app_context():
             with get_cursor() as cursor:
-                cursor.execute("SELECT token_id FROM Token")
+                cursor.execute("SELECT token_id FROM `Token`")
                 token_ids_before = {
                     row["token_id"] for row in cursor.fetchall()
                 }
@@ -94,7 +103,7 @@ def test_queue_request_rolls_back_token_if_linking_fails(
                 assert request["token_id"] is None
                 assert request["request_status"] == "ready"
 
-                cursor.execute("SELECT token_id FROM Token")
+                cursor.execute("SELECT token_id FROM `Token`")
                 token_ids_after = {
                     row["token_id"] for row in cursor.fetchall()
                 }

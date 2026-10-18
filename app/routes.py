@@ -12,7 +12,7 @@ from flask import (
     current_app,
     session,
 )
-from app.utils.auth import require_permission
+from app.utils.auth import require_permission, require_customer_permission
 import re
 
 from app.utils.procedures import (
@@ -83,6 +83,91 @@ def _validate_customer_input(full_name, phone, email):
             return 'Invalid email'
 
     return None
+
+
+# ============================================================
+# BRANCHES
+# ============================================================
+
+@api_bp.route('/branches', methods=['GET'])
+def get_branches():
+    """Get all active branches."""
+    try:
+        branches = execute_query(
+            """SELECT branch_id, name, address, phone, is_active
+               FROM Branch
+               WHERE is_active = TRUE
+               ORDER BY name"""
+        )
+        return jsonify(branches), 200
+    except Exception:
+        current_app.logger.exception('Unable to fetch branches')
+        return _safe_error('Unable to fetch branches', 500)
+
+
+# ============================================================
+# SERVICES
+# ============================================================
+
+@api_bp.route('/services', methods=['GET'])
+def get_services():
+    """Get all active services."""
+    try:
+        services = execute_query(
+            """SELECT service_id, name, description, estimated_duration_minutes, is_active
+               FROM Service
+               WHERE is_active = TRUE
+               ORDER BY name"""
+        )
+        return jsonify(services), 200
+    except Exception:
+        current_app.logger.exception('Unable to fetch services')
+        return _safe_error('Unable to fetch services', 500)
+
+
+@api_bp.route('/services/<int:service_id>/documents', methods=['GET'])
+def get_service_documents(service_id: int):
+    """Get documents required for a specific service."""
+    try:
+        documents = execute_query(
+            """SELECT d.document_id, d.name, d.description, sd.is_required
+               FROM service_document sd
+               JOIN document d ON d.document_id = sd.document_id
+               WHERE sd.service_id = %s
+                 AND d.is_active = 1
+               ORDER BY d.name""",
+            (service_id,),
+            fetch=True
+        )
+        return jsonify(documents), 200
+    except Exception:
+        current_app.logger.exception('Unable to fetch service documents')
+        return _safe_error('Unable to fetch service documents', 500)
+
+
+# ============================================================
+# QUEUES FOR BRANCH
+# ============================================================
+
+@api_bp.route('/branches/<int:branch_id>/queues', methods=['GET'])
+def get_branch_queues(branch_id: int):
+    """Get active queues for a branch."""
+    try:
+        queues = execute_query(
+            """SELECT q.queue_id, q.name, q.branch_id, q.service_id, q.is_active,
+                      s.name AS service_name, s.estimated_duration_minutes
+               FROM Queue q
+               JOIN Service s ON s.service_id = q.service_id
+               WHERE q.branch_id = %s
+                 AND q.is_active = TRUE
+               ORDER BY q.name""",
+            (branch_id,),
+            fetch=True
+        )
+        return jsonify(queues), 200
+    except Exception:
+        current_app.logger.exception('Unable to fetch branch queues')
+        return _safe_error('Unable to fetch branch queues', 500)
 
 
 # ============================================================
@@ -711,6 +796,9 @@ def call_next_token_endpoint(counter_id: int):
                 'error': 'No waiting tokens'
             }), 404
 
+        # Send notification to customer
+        send_token_called_notification(result['token_id'])
+
         return jsonify(result)
 
     except Exception:
@@ -752,6 +840,9 @@ def complete_token_endpoint(token_id: int):
 
     try:
         complete_token(token_id)
+
+        # Send notification to customer
+        send_token_completed_notification(token_id)
 
         return jsonify({
             'success': True
@@ -795,6 +886,9 @@ def serve_token_endpoint(token_id: int):
 
     try:
         serve_token(token_id)
+
+        # Send notification to customer
+        send_token_serving_notification(token_id)
 
         return jsonify({
             'success': True
@@ -1321,11 +1415,162 @@ def services_list():
         services=services
     )
 
+
+# ============================================================
+# DISPLAY BOARD
+# ============================================================
+
+@web_bp.route('/display')
+def display_board():
+    """Public display board for branch queues."""
+    return render_template('display.html')
+
+
+# ============================================================
+# STAFF COUNTER APIs
+# ============================================================
+
+@api_bp.route('/staff/counters', methods=['GET'])
+@require_permission("queue_operate")
+def get_staff_counters():
+    """Get counters assigned to the logged-in staff member's branch."""
+    account = session.get('account', {})
+    staff_id = account.get('staff_id') if isinstance(account, dict) else None
+    
+    if not staff_id:
+        return _safe_error('Authentication required', 401)
+    
+    try:
+        # Get staff's branch_id
+        staff_info = execute_query(
+            """SELECT branch_id FROM Staff WHERE staff_id = %s AND is_active = TRUE""",
+            (staff_id,),
+            fetch=True
+        )
+        
+        if not staff_info:
+            return _safe_error('Staff not found or inactive', 403)
+        
+        branch_id = staff_info[0]['branch_id']
+        
+        # Get counters for this branch
+        counters = execute_query(
+            """SELECT c.counter_id, c.name, c.location, c.floor, c.is_active,
+                      q.name AS queue_name, q.queue_id,
+                      b.name AS branch_name
+               FROM Counter c
+               JOIN Queue q ON c.queue_id = q.queue_id
+               JOIN Branch b ON c.branch_id = b.branch_id
+               WHERE c.branch_id = %s
+                 AND c.is_active = TRUE
+                 AND q.is_active = TRUE
+               ORDER BY q.name, c.name""",
+            (branch_id,),
+            fetch=True
+        )
+        
+        return jsonify(counters), 200
+        
+    except Exception:
+        current_app.logger.exception('Unable to fetch staff counters')
+        return _safe_error('Unable to fetch staff counters', 500)
+
+
+@api_bp.route('/counters/<int:counter_id>/call-specific', methods=['POST'])
+@require_permission("queue_operate")
+def call_specific_token_endpoint(counter_id: int):
+    """Call a specific token by number for a counter."""
+    account = session.get('account', {})
+    staff_id = account.get('staff_id') if isinstance(account, dict) else None
+    
+    if not staff_id:
+        return _safe_error('Authentication required', 401)
+    
+    data = request.get_json(silent=True) or {}
+    token_number = data.get('token_number')
+    
+    try:
+        token_number = int(token_number)
+        if token_number <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return _safe_error('Valid token_number is required')
+    
+    # Validate staff + counter
+    staff_counter = _validate_staff_for_counter(staff_id, counter_id)
+    
+    if not staff_counter:
+        return _safe_error('Staff member is not authorized for this counter', 403)
+    
+    try:
+        from app.utils.procedures import call_specific_token
+        token = call_specific_token(counter_id, staff_id, token_number)
+        
+        if not token:
+            return jsonify({'error': 'Token not found or not in waiting status'}), 404
+            
+        # Send notification to customer
+        send_token_called_notification(token['token_id'])
+        
+        return jsonify(token)
+        
+    except Exception:
+        current_app.logger.exception('Unable to call specific token')
+        return _safe_error('Unable to call specific token')
+
+
+# ============================================================
+# TOKEN REISSUE
+# ============================================================
+
+@api_bp.route('/tokens/<int:token_id>/reissue', methods=['POST'])
+@require_permission("queue_operate")
+def reissue_token_endpoint(token_id: int):
+    """Reissue a token - put it back in waiting queue."""
+    # Verify token has an active assigned staff member
+    token = _validate_token_staff(token_id)
+    
+    if not token:
+        return _safe_error('Token is not assigned to an active staff member', 403)
+    
+    if token['status'] not in ('called', 'serving'):
+        return _safe_error('Only called or serving tokens can be reissued')
+    
+    try:
+        from app.utils.procedures import reissue_token
+        reissue_token(token_id)
+        
+        return jsonify({'success': True})
+        
+    except Exception:
+        current_app.logger.exception('Unable to reissue token')
+        return _safe_error('Unable to reissue token')
+
+
+# ============================================================
+# GET TOKEN STATUS
+# ============================================================
+
+@api_bp.route('/tokens/<int:token_id>', methods=['GET'])
+def get_token_status_endpoint(token_id: int):
+    """Get token status."""
+    token = get_token_status(token_id)
+    
+    if not token:
+        return _safe_error('Token not found', 404)
+        
+    return jsonify(token)
+
+
 # ============================================================
 # CUSTOMER REQUEST APIs
 # ============================================================
 
-@api_bp.route('/customer-requests', methods=['POST'])
+@api_bp.route(
+    '/customer-requests',
+    methods=['POST']
+)
+@require_customer_permission("customer:manage_own")
 def create_customer_request_api():
     """Create a draft request for an existing customer."""
 
@@ -1374,6 +1619,7 @@ def create_customer_request_api():
     '/customer-requests/<int:request_id>',
     methods=['GET']
 )
+@require_customer_permission("customer:read")
 def get_customer_request_api(request_id):
     """Return request details and configured document statuses."""
 
@@ -1448,6 +1694,7 @@ def get_customer_request_api(request_id):
     '/customer-requests/<int:request_id>/documents',
     methods=['PATCH']
 )
+@require_customer_permission("customer:manage_own")
 def update_customer_request_document_api(request_id):
     """Update the readiness status of a request document."""
 
@@ -1499,6 +1746,7 @@ def update_customer_request_document_api(request_id):
     '/customer-requests/<int:request_id>/confirm-readiness',
     methods=['POST']
 )
+@require_customer_permission("customer:manage_own")
 def confirm_customer_request_readiness_api(request_id):
     """Confirm that all required documents are available."""
     try:
@@ -1527,6 +1775,7 @@ def confirm_customer_request_readiness_api(request_id):
     '/customer-requests/<int:request_id>/queue',
     methods=['POST']
 )
+@require_customer_permission("customer:manage_own")
 def queue_customer_request_api(request_id):
     """Issue a token for a ready customer request."""
     try:
@@ -1544,3 +1793,261 @@ def queue_customer_request_api(request_id):
             'Unable to queue customer request',
             500
         )
+
+
+# ============================================================
+# DISPLAY BOARD APIs
+# ============================================================
+
+@api_bp.route('/display/branch', methods=['GET'])
+def get_display_branch():
+    """Get display data for all active queues at the branch."""
+    # For now, use the first active branch. In production, this would be
+    # determined by the display device configuration.
+    branch = execute_query(
+        """SELECT branch_id, name FROM Branch WHERE is_active = TRUE ORDER BY branch_id LIMIT 1""",
+        fetch=True
+    )
+    
+    if not branch:
+        return _safe_error('No active branch found', 404)
+    
+    branch_id = branch[0]['branch_id']
+    branch_name = branch[0]['name']
+    
+    # Get all active queues for this branch with their current state
+    queues_data = execute_query(
+        """SELECT q.queue_id, q.name, q.service_id, s.name AS service_name, q.branch_id
+           FROM Queue q
+           JOIN Service s ON q.service_id = s.service_id
+           WHERE q.branch_id = %s AND q.is_active = TRUE AND s.is_active = TRUE
+           ORDER BY q.queue_id""",
+        (branch_id,),
+        fetch=True
+    )
+    
+    queues = []
+    for q in queues_data:
+        # Get current token (called or serving)
+        current_token = execute_query(
+            """SELECT t.token_id, t.token_number, t.status, t.counter_id, c.name AS counter_name
+               FROM Token t
+               LEFT JOIN Counter c ON t.counter_id = c.counter_id
+               WHERE t.queue_id = %s AND t.status IN ('called', 'serving')
+               ORDER BY 
+                   CASE t.status WHEN 'serving' THEN 1 WHEN 'called' THEN 2 END,
+                   t.called_at ASC
+               LIMIT 1""",
+            (q['queue_id'],),
+            fetch=True
+        )
+        
+        # Get waiting tokens (up to 10)
+        waiting_tokens = execute_query(
+            """SELECT t.token_id, t.token_number, t.status, t.counter_id, c.name AS counter_name
+               FROM Token t
+               LEFT JOIN Counter c ON t.counter_id = c.counter_id
+               WHERE t.queue_id = %s AND t.status = 'waiting'
+               ORDER BY t.token_number ASC
+               LIMIT 10""",
+            (q['queue_id'],),
+            fetch=True
+        )
+        
+        queues.append({
+            'queue_id': q['queue_id'],
+            'name': q['name'],
+            'service_name': q['service_name'],
+            'current_token': current_token[0] if current_token else None,
+            'waiting_tokens': waiting_tokens if waiting_tokens else []
+        })
+    
+    return jsonify({
+        'branch_id': branch_id,
+        'branch_name': branch_name,
+        'queues': queues
+    })
+
+
+@api_bp.route('/display/branch/<int:branch_id>', methods=['GET'])
+def get_display_branch_by_id(branch_id: int):
+    """Get display data for a specific branch."""
+    branch = execute_query(
+        """SELECT branch_id, name FROM Branch WHERE branch_id = %s AND is_active = TRUE""",
+        (branch_id,),
+        fetch=True
+    )
+    
+    if not branch:
+        return _safe_error('Branch not found', 404)
+    
+    branch_name = branch[0]['name']
+    
+    # Get all active queues for this branch
+    queues_data = execute_query(
+        """SELECT q.queue_id, q.name, q.service_id, s.name AS service_name
+           FROM Queue q
+           JOIN Service s ON q.service_id = s.service_id
+           WHERE q.branch_id = %s AND q.is_active = TRUE AND s.is_active = TRUE
+           ORDER BY q.queue_id""",
+        (branch_id,),
+        fetch=True
+    )
+    
+    queues = []
+    for q in queues_data:
+        current_token = execute_query(
+            """SELECT t.token_id, t.token_number, t.status, t.counter_id, c.name AS counter_name
+               FROM Token t
+               LEFT JOIN Counter c ON t.counter_id = c.counter_id
+               WHERE t.queue_id = %s AND t.status IN ('called', 'serving')
+               ORDER BY 
+                   CASE t.status WHEN 'serving' THEN 1 WHEN 'called' THEN 2 END,
+                   t.called_at ASC
+               LIMIT 1""",
+            (q['queue_id'],),
+            fetch=True
+        )
+        
+        waiting_tokens = execute_query(
+            """SELECT t.token_id, t.token_number, t.status, t.counter_id, c.name AS counter_name
+               FROM Token t
+               LEFT JOIN Counter c ON t.counter_id = c.counter_id
+               WHERE t.queue_id = %s AND t.status = 'waiting'
+               ORDER BY t.token_number ASC
+               LIMIT 10""",
+            (q['queue_id'],),
+            fetch=True
+        )
+        
+        queues.append({
+            'queue_id': q['queue_id'],
+            'name': q['name'],
+            'service_name': q['service_name'],
+            'current_token': current_token[0] if current_token else None,
+            'waiting_tokens': waiting_tokens if waiting_tokens else []
+        })
+    
+    return jsonify({
+        'branch_id': branch_id,
+        'branch_name': branch_name,
+        'queues': queues
+    })
+
+
+# ============================================================
+# NOTIFICATION APIs
+# ============================================================
+
+@api_bp.route('/notifications', methods=['GET'])
+@require_customer_permission("customer:read")
+def get_customer_notifications():
+    """Get notifications for the current customer."""
+    account = session.get('account', {})
+    customer_id = account.get('customer_id') if isinstance(account, dict) else None
+    
+    if not customer_id:
+        return _safe_error('Authentication required', 401)
+    
+    notifications = execute_query(
+        """SELECT notification_id, token_id, channel, message, status, sent_at, created_at
+           FROM Notification
+           WHERE customer_id = %s
+           ORDER BY created_at DESC
+           LIMIT 50""",
+        (customer_id,),
+        fetch=True
+    )
+    
+    return jsonify({'notifications': notifications if notifications else []})
+
+
+@api_bp.route('/notifications/<int:notification_id>/read', methods=['POST'])
+@require_customer_permission("customer:manage_own")
+def mark_notification_read(notification_id: int):
+    """Mark a notification as read (update status)."""
+    account = session.get('account', {})
+    customer_id = account.get('customer_id') if isinstance(account, dict) else None
+    
+    if not customer_id:
+        return _safe_error('Authentication required', 401)
+    
+    result = execute_query(
+        """UPDATE Notification
+           SET status = 'sent'
+           WHERE notification_id = %s AND customer_id = %s""",
+        (notification_id, customer_id),
+        fetch=False
+    )
+    
+    if result == 0:
+        return _safe_error('Notification not found', 404)
+    
+    return jsonify({'success': True, 'message': 'Notification marked as read'})
+
+
+def create_notification(customer_id: int, token_id: int, channel: str, message: str):
+    """Create a new notification."""
+    with get_cursor() as cursor:
+        cursor.execute(
+            """INSERT INTO Notification (customer_id, token_id, channel, message, status)
+               VALUES (%s, %s, %s, %s, 'pending')""",
+            (customer_id, token_id, channel, message)
+        )
+        return cursor.lastrowid
+
+
+def send_token_called_notification(token_id: int):
+    """Send notification when a token is called."""
+    token = get_token_status(token_id)
+    if not token:
+        return
+    
+    customer_id = token['customer_id']
+    token_number = token['token_number']
+    counter_name = token.get('counter_name', '')
+    queue_name = token.get('queue_name', '')
+    
+    message = f'Your token {token_number} has been called'
+    if counter_name:
+        message += f' at Counter {counter_name}'
+    if queue_name:
+        message += f' for {queue_name}'
+    message += '. Please proceed to the counter.'
+    
+    # Create in-app notification
+    create_notification(customer_id, token_id, 'in_app', message)
+    
+    # TODO: Add SMS/email/push notification integrations here
+
+
+def send_token_serving_notification(token_id: int):
+    """Send notification when service starts."""
+    token = get_token_status(token_id)
+    if not token:
+        return
+    
+    customer_id = token['customer_id']
+    token_number = token['token_number']
+    counter_name = token.get('counter_name', '')
+    
+    message = f'Service started for token {token_number}'
+    if counter_name:
+        message += f' at Counter {counter_name}'
+    message += '.'
+    
+    create_notification(customer_id, token_id, 'in_app', message)
+
+
+def send_token_completed_notification(token_id: int):
+    """Send notification when service is completed."""
+    token = get_token_status(token_id)
+    if not token:
+        return
+    
+    customer_id = token['customer_id']
+    token_number = token['token_number']
+    
+    message = f'Your service for token {token_number} has been completed. Thank you for visiting!'
+    
+    create_notification(customer_id, token_id, 'in_app', message)

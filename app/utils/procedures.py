@@ -1,8 +1,5 @@
-
-"""
-QueueX Stored Procedure Wrappers
-Python interface for calling MySQL stored procedures.
-"""
+"""QueueX Stored Procedure Wrappers
+Python interface for calling MySQL stored procedures."""
 
 from typing import Optional, Dict, Any
 
@@ -667,6 +664,130 @@ def queue_customer_request(
                 "request_status": "queued",
                 "message": "Customer request queued successfully",
             }
+
+        finally:
+            cursor.close()
+
+
+def call_specific_token(counter_id: int, staff_id: int, token_number: int) -> Optional[Dict[str, Any]]:
+    """Call a specific token by number for a counter."""
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+
+        try:
+            # Validate counter
+            cursor.execute(
+                """SELECT c.counter_id, c.queue_id, c.is_active
+                   FROM Counter c
+                   WHERE c.counter_id = %s""",
+                (counter_id,)
+            )
+
+            counter = cursor.fetchone()
+
+            if not counter or not counter['is_active']:
+                return None
+
+            # Find the token
+            cursor.execute(
+                """SELECT t.token_id, t.token_number, t.queue_id, t.status, t.customer_id, t.counter_id
+                   FROM Token t
+                   WHERE t.queue_id = %s
+                     AND t.token_number = %s""",
+                (counter['queue_id'], token_number)
+            )
+
+            token = cursor.fetchone()
+
+            if not token:
+                return None
+
+            if token['status'] != 'waiting':
+                return None
+
+            # Call the token
+            cursor.execute(
+                """UPDATE Token
+                   SET status = 'called',
+                       counter_id = %s,
+                       staff_id = %s,
+                       called_at = CURRENT_TIMESTAMP
+                   WHERE token_id = %s
+                     AND status = 'waiting'""",
+                (counter_id, staff_id, token['token_id'])
+            )
+
+            if cursor.rowcount != 1:
+                return None
+
+            # Log history
+            cursor.execute(
+                """INSERT INTO Queue_History (token_id, previous_status, new_status, changed_by)
+                   VALUES (%s, 'waiting', 'called', %s)""",
+                (token['token_id'], staff_id)
+            )
+
+            # Get updated token
+            cursor.execute(
+                """SELECT t.*, c.full_name AS customer_name, q.name AS queue_name, s.name AS service_name
+                   FROM Token t
+                   JOIN Customer c ON t.customer_id = c.customer_id
+                   JOIN Queue q ON t.queue_id = q.queue_id
+                   JOIN Service s ON q.service_id = s.service_id
+                   WHERE t.token_id = %s""",
+                (token['token_id'],)
+            )
+
+            return cursor.fetchone()
+
+        finally:
+            cursor.close()
+
+
+def reissue_token(token_id: int) -> bool:
+    """Reissue a token - put it back in waiting queue."""
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+
+        try:
+            # Get current token
+            cursor.execute(
+                """SELECT token_id, status, counter_id, queue_id, staff_id
+                   FROM Token
+                   WHERE token_id = %s""",
+                (token_id,)
+            )
+
+            token = cursor.fetchone()
+
+            if not token:
+                return False
+
+            if token['status'] not in ('called', 'serving'):
+                return False
+
+            # Reissue the token
+            cursor.execute(
+                """UPDATE Token
+                   SET status = 'waiting',
+                       counter_id = NULL,
+                       staff_id = NULL,
+                       called_at = NULL
+                   WHERE token_id = %s""",
+                (token_id,)
+            )
+
+            if cursor.rowcount != 1:
+                return False
+
+            # Log history
+            cursor.execute(
+                """INSERT INTO Queue_History (token_id, previous_status, new_status, changed_by)
+                   VALUES (%s, %s, 'waiting', %s)""",
+                (token_id, token['status'], token.get('staff_id'))
+            )
+
+            return True
 
         finally:
             cursor.close()

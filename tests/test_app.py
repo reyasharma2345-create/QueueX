@@ -1,4 +1,3 @@
-﻿
 def test_health_endpoint(client):
     response = client.get("/health")
     assert response.status_code == 200
@@ -21,7 +20,19 @@ def test_database_is_queuex_test(app):
     assert result["database_name"] == "queuex_test"
 
 
+def _login_customer(client, username="aarav", password="password123"):
+    """Helper to log in a customer and return the session."""
+    response = client.post(
+        "/api/auth/customer/login",
+        json={"username": username, "password": password},
+    )
+    assert response.status_code == 200
+    return response.get_json()
+
+
 def test_create_customer_request_rejects_missing_ids(client):
+    # Login first
+    _login_customer(client)
     response = client.post("/api/customer-requests", json={})
     assert response.status_code == 400
     assert response.get_json()["error"] == (
@@ -30,6 +41,7 @@ def test_create_customer_request_rejects_missing_ids(client):
 
 
 def test_queue_nonexistent_request_returns_bad_request(client):
+    _login_customer(client)
     response = client.post("/api/customer-requests/99999/queue")
     assert response.status_code == 400
     assert response.get_json()["error"] == "Customer request not found"
@@ -41,6 +53,7 @@ def test_create_and_retrieve_customer_request(client, app):
     request_id = None
 
     try:
+        _login_customer(client)
         response = client.post(
             "/api/customer-requests",
             json={"customer_id": 1, "queue_id": 1},
@@ -83,6 +96,7 @@ def test_readiness_rejected_when_required_documents_are_pending(client, app):
     request_id = None
 
     try:
+        _login_customer(client)
         created = client.post(
             "/api/customer-requests",
             json={"customer_id": 1, "queue_id": 1},
@@ -133,6 +147,7 @@ def test_readiness_confirmed_when_all_required_documents_are_available(
     request_id = None
 
     try:
+        _login_customer(client)
         created = client.post(
             "/api/customer-requests",
             json={"customer_id": 1, "queue_id": 1},
@@ -184,7 +199,8 @@ def test_readiness_confirmed_when_all_required_documents_are_available(
                         "DELETE FROM customer_request WHERE request_id = %s",
                         (request_id,),
                     )
-                
+
+
 def test_queueing_request_twice_reuses_existing_token(client, app):
     from app.utils.db import get_cursor
 
@@ -193,6 +209,7 @@ def test_queueing_request_twice_reuses_existing_token(client, app):
 
     try:
         # Create a fresh draft request.
+        _login_customer(client)
         created = client.post(
             "/api/customer-requests",
             json={"customer_id": 1, "queue_id": 1},
@@ -244,14 +261,12 @@ def test_queueing_request_twice_reuses_existing_token(client, app):
                 assert cursor.fetchone()["token_count"] == 1
 
                 cursor.execute(
-                    "SELECT COUNT(*) AS token_count FROM token "
+                    "SELECT COUNT(*) AS token_count FROM `Token` "
                     "WHERE token_id = %s",
                     (token_id,),
                 )
                 assert cursor.fetchone()["token_count"] == 1
 
-    
-    
     finally:
         if request_id is not None:
             with app.app_context():
@@ -269,11 +284,11 @@ def test_queueing_request_twice_reuses_existing_token(client, app):
                     # Delete dependent rows before their parent records.
                     if test_token_id is not None:
                         cursor.execute(
-                            "DELETE FROM notification WHERE token_id = %s",
+                            "DELETE FROM Notification WHERE token_id = %s",
                             (test_token_id,),
                         )
                         cursor.execute(
-                            "DELETE FROM queue_history WHERE token_id = %s",
+                            "DELETE FROM Queue_History WHERE token_id = %s",
                             (test_token_id,),
                         )
 
@@ -288,9 +303,10 @@ def test_queueing_request_twice_reuses_existing_token(client, app):
 
                     if test_token_id is not None:
                         cursor.execute(
-                            "DELETE FROM token WHERE token_id = %s",
+                            "DELETE FROM `Token` WHERE token_id = %s",
                             (test_token_id,),
                         )
+
 
 def test_document_update_rejects_invalid_service_document(
     client, monkeypatch
@@ -308,6 +324,7 @@ def test_document_update_rejects_invalid_service_document(
         reject_invalid_document,
     )
 
+    _login_customer(client)
     response = client.patch(
         "/api/customer-requests/99999/documents",
         json={

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Get Your Token - QueueX</title>
+    <title>QueueX - Customer Portal</title>
 
     <style>
         * {
@@ -15,8 +15,7 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-                Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: #f5f5f5;
             min-height: 100vh;
             padding: 20px;
@@ -50,6 +49,14 @@
             padding: 24px;
             border-radius: 10px;
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            color: #1e40af;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e5e7eb;
         }
 
         .field {
@@ -63,8 +70,7 @@
             color: #374151;
         }
 
-        input,
-        select {
+        input, select {
             width: 100%;
             padding: 12px;
             border: 1px solid #d1d5db;
@@ -72,8 +78,7 @@
             font-size: 15px;
         }
 
-        input:focus,
-        select:focus {
+        input:focus, select:focus {
             outline: none;
             border-color: #2563eb;
         }
@@ -90,13 +95,29 @@
             cursor: pointer;
         }
 
-        button:hover {
+        button:hover:not(:disabled) {
             background: #1d4ed8;
         }
 
         button:disabled {
             background: #9ca3af;
             cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #4b5563;
+        }
+
+        .btn-danger {
+            background: #dc2626;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #b91c1c;
         }
 
         .message {
@@ -187,25 +208,10 @@
             font-weight: 600;
         }
 
-        .status.called {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .status.serving {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .status.completed {
-            background: #e5e7eb;
-            color: #374151;
-        }
-
-        .status.no-show {
-            background: #fee2e2;
-            color: #991b1b;
-        }
+        .status.called { background: #dbeafe; color: #1e40af; }
+        .status.serving { background: #d1fae5; color: #065f46; }
+        .status.completed { background: #e5e7eb; color: #374151; }
+        .status.no-show { background: #fee2e2; color: #991b1b; }
 
         .live {
             margin-top: 12px;
@@ -213,16 +219,186 @@
             color: #6b7280;
         }
 
-        .new-token {
-            margin-top: 15px;
-            background: #6b7280;
+        .step {
+            display: none;
         }
 
-        .new-token:hover {
-            background: #4b5563;
+        .step.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
         }
 
-        .back {
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .step-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #e5e7eb;
+            transition: all 0.3s;
+        }
+
+        .step-dot.active {
+            background: #2563eb;
+            transform: scale(1.2);
+        }
+
+        .step-dot.completed {
+            background: #10b981;
+        }
+
+        .document-list {
+            margin: 16px 0;
+        }
+
+        .document-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #f9fafb;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .document-item.required {
+            border-left: 4px solid #dc2626;
+        }
+
+        .document-item.optional {
+            border-left: 4px solid #6b7280;
+        }
+
+        .document-info {
+            flex: 1;
+        }
+
+        .document-name {
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .document-description {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+
+        .document-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .document-badge.required {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        .document-badge.optional {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
+
+        .document-status {
+            display: flex;
+            gap: 8px;
+        }
+
+        .status-btn {
+            width: auto;
+            padding: 6px 12px;
+            font-size: 13px;
+            border-radius: 4px;
+        }
+
+        .status-btn.available {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-btn.missing {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-btn.pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-btn.active-btn {
+            border: 2px solid;
+        }
+
+        .readiness-summary {
+            padding: 16px;
+            background: #f0fdf4;
+            border-radius: 8px;
+            border: 1px solid #bbf7d0;
+            margin: 16px 0;
+        }
+
+        .readiness-summary.incomplete {
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+
+        .readiness-summary h3 {
+            color: #166534;
+            margin-bottom: 8px;
+        }
+
+        .readiness-summary.incomplete h3 {
+            color: #dc2626;
+        }
+
+        .readiness-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px 0;
+            font-size: 14px;
+        }
+
+        .readiness-item .check-icon {
+            color: #10b981;
+        }
+
+        .readiness-item .cross-icon {
+            color: #dc2626;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 12px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #2563eb;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .hidden { display: none !important; }
+
+        .back-link {
             display: block;
             margin-top: 20px;
             text-align: center;
@@ -230,1039 +406,661 @@
             text-decoration: none;
         }
 
-        .back:hover {
-            text-decoration: underline;
+        .back-link:hover { text-decoration: underline; }
+
+        .login-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+            background: #f3f4f6;
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .login-tab {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #6b7280;
+            transition: all 0.2s;
+        }
+
+        .login-tab.active {
+            background: white;
+            color: #2563eb;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
 
         @media (max-width: 500px) {
-            .queue-info {
-                grid-template-columns: 1fr;
-            }
-
-            .container {
-                margin: 20px auto;
-            }
+            .queue-info { grid-template-columns: 1fr; }
+            .container { margin: 20px auto; }
+            .document-item { flex-direction: column; gap: 12px; align-items: flex-start; }
+            .document-status { width: 100%; }
+            .status-btn { flex: 1; }
         }
     </style>
 </head>
 
 <body>
-
     <div class="container">
-
-        <!-- HEADER -->
         <div class="header">
             <h1>QueueX</h1>
-            <p>Get Your Queue Token</p>
+            <p id="header-subtitle">Customer Portal</p>
         </div>
 
-        <div class="card">
-
-            <!-- TOKEN FORM -->
-            <form id="token-form">
-
-                <div class="field">
-                    <label for="name">Full Name</label>
-
-                    <input
-                        type="text"
-                        id="name"
-                        placeholder="Enter your full name"
-                        required
-                    >
+        <!-- LOGIN STEP -->
+        <div id="step-login" class="step active">
+            <div class="card">
+                <div class="login-tabs">
+                    <button type="button" class="login-tab active" data-tab="customer">Customer</button>
+                    <button type="button" class="login-tab" data-tab="staff">Staff</button>
                 </div>
 
-                <div class="field">
-                    <label for="phone">Phone Number</label>
+                <form id="login-form">
+                    <div class="field">
+                        <label for="login-username">Username</label>
+                        <input type="text" id="login-username" placeholder="Enter your username" required autocomplete="username">
+                    </div>
+                    <div class="field">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" placeholder="Enter your password" required autocomplete="current-password">
+                    </div>
+                    <div id="login-message" class="message"></div>
+                    <button type="submit" id="login-btn">Sign In</button>
+                </form>
+            </div>
+        </div>
 
-                    <input
-                        type="tel"
-                        id="phone"
-                        placeholder="Enter your phone number"
-                        required
-                    >
+        <!-- SELECT BRANCH STEP -->
+        <div id="step-branch" class="step">
+            <div class="card">
+                <div class="step-indicator">
+                    <div class="step-dot completed" data-step="1"></div>
+                    <div class="step-dot active" data-step="2"></div>
+                    <div class="step-dot" data-step="3"></div>
+                    <div class="step-dot" data-step="4"></div>
+                    <div class="step-dot" data-step="5"></div>
                 </div>
-
+                <h2>Select Branch</h2>
                 <div class="field">
-                    <label for="queue">Select Service Queue</label>
-
-                    <select id="queue" required>
-                        <option value="">
-                            Loading queues...
-                        </option>
+                    <label for="branch-select">Choose a branch</label>
+                    <select id="branch-select">
+                        <option value="">Loading branches...</option>
                     </select>
                 </div>
-
-                <button
-                    type="submit"
-                    id="submit-btn"
-                >
-                    Get Token
-                </button>
-
-            </form>
-
-            <!-- MESSAGE -->
-            <div
-                id="message"
-                class="message"
-            ></div>
-
-            <!-- TOKEN RESULT -->
-            <div
-                id="token-result"
-                class="token-result"
-            >
-
-                <h2>Your Token Number</h2>
-
-                <div
-                    id="token-number"
-                    class="token-number"
-                >
-                    --
+                <div id="branch-message" class="message"></div>
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                    <button type="button" class="btn-secondary" id="branch-back">Back</button>
+                    <button type="button" id="branch-next" style="flex: 1;">Continue</button>
                 </div>
-
-                <div
-                    id="customer-name"
-                    class="customer-name"
-                ></div>
-
-                <div
-                    id="queue-name"
-                    class="queue-name"
-                ></div>
-
-                <!-- QUEUE INFO -->
-                <div class="queue-info">
-
-                    <div class="info-box">
-
-                        <div
-                            id="people-ahead"
-                            class="info-value"
-                        >
-                            --
-                        </div>
-
-                        <div class="info-label">
-                            People Ahead
-                        </div>
-
-                    </div>
-
-                    <div class="info-box">
-
-                        <div
-                            id="estimated-wait"
-                            class="info-value"
-                        >
-                            --
-                        </div>
-
-                        <div class="info-label">
-                            Est. Wait (min)
-                        </div>
-
-                    </div>
-
-                </div>
-
-                <!-- STATUS -->
-                <div
-                    id="queue-status"
-                    class="status"
-                >
-                    WAITING
-                </div>
-
-                <div class="live">
-                    Live updates every 2 seconds
-                </div>
-
-                <!-- NEW TOKEN -->
-                <button
-                    type="button"
-                    id="new-token-btn"
-                    class="new-token"
-                >
-                    Get Another Token
-                </button>
-
             </div>
-
         </div>
 
-        <a
-            href="/"
-            class="back"
-        >
-            ← Back to Dashboard
-        </a>
+        <!-- SELECT SERVICE STEP -->
+        <div id="step-service" class="step">
+            <div class="card">
+                <div class="step-indicator">
+                    <div class="step-dot completed" data-step="1"></div>
+                    <div class="step-dot completed" data-step="2"></div>
+                    <div class="step-dot active" data-step="3"></div>
+                    <div class="step-dot" data-step="4"></div>
+                    <div class="step-dot" data-step="5"></div>
+                </div>
+                <h2>Select Banking Service</h2>
+                <div id="selected-branch-display" style="padding: 12px; background: #eff6ff; border-radius: 8px; margin-bottom: 16px; font-size: 14px; color: #1e40af;"></div>
+                <div class="field">
+                    <label for="service-select">Choose a service</label>
+                    <select id="service-select">
+                        <option value="">Select a branch first</option>
+                    </select>
+                </div>
+                <div id="service-message" class="message"></div>
+                <div id="service-documents" class="document-list hidden"></div>
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                    <button type="button" class="btn-secondary" id="service-back">Back</button>
+                    <button type="button" id="service-next" style="flex: 1;">Continue</button>
+                </div>
+            </div>
+        </div>
 
+        <!-- CONFIRM DOCUMENTS STEP -->
+        <div id="step-documents" class="step">
+            <div class="card">
+                <div class="step-indicator">
+                    <div class="step-dot completed" data-step="1"></div>
+                    <div class="step-dot completed" data-step="2"></div>
+                    <div class="step-dot completed" data-step="3"></div>
+                    <div class="step-dot active" data-step="4"></div>
+                    <div class="step-dot" data-step="5"></div>
+                </div>
+                <h2>Confirm Document Readiness</h2>
+                <div id="selected-service-display" style="padding: 12px; background: #eff6ff; border-radius: 8px; margin-bottom: 16px; font-size: 14px; color: #1e40af;"></div>
+                <div id="documents-list" class="document-list"></div>
+                <div id="readiness-summary" class="readiness-summary"></div>
+                <div id="documents-message" class="message"></div>
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                    <button type="button" class="btn-secondary" id="documents-back">Back</button>
+                    <button type="button" id="documents-confirm" style="flex: 1;">Confirm & Create Request</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TOKEN RESULT STEP -->
+        <div id="step-token" class="step">
+            <div class="card">
+                <div class="step-indicator">
+                    <div class="step-dot completed" data-step="1"></div>
+                    <div class="step-dot completed" data-step="2"></div>
+                    <div class="step-dot completed" data-step="3"></div>
+                    <div class="step-dot completed" data-step="4"></div>
+                    <div class="step-dot active" data-step="5"></div>
+                </div>
+
+                <div id="token-result" class="token-result" style="display: block;">
+                    <h2>Your Token Number</h2>
+                    <div id="token-number" class="token-number">--</div>
+                    <div id="customer-name" class="customer-name"></div>
+                    <div id="queue-name" class="queue-name"></div>
+
+                    <div class="queue-info">
+                        <div class="info-box">
+                            <div id="people-ahead" class="info-value">--</div>
+                            <div class="info-label">People Ahead</div>
+                        </div>
+                        <div class="info-box">
+                            <div id="estimated-wait" class="info-value">--</div>
+                            <div class="info-label">Est. Wait (min)</div>
+                        </div>
+                    </div>
+
+                    <div id="queue-status" class="status">WAITING</div>
+                    <div class="live">Live updates every 2 seconds</div>
+                </div>
+
+                <div id="token-message" class="message"></div>
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                    <button type="button" class="btn-danger" id="logout-btn">Logout</button>
+                    <button type="button" class="new-token" id="new-request-btn">New Request</button>
+                </div>
+            </div>
+        </div>
+
+        <a href="/" class="back-link">← Back to Dashboard</a>
     </div>
 
-
 <script>
+    // ==========================================
+    // STATE MANAGEMENT
+    // ==========================================
+    let currentState = {
+        user: null,
+        userType: 'customer',
+        branchId: null,
+        branchName: null,
+        serviceId: null,
+        serviceName: null,
+        queueId: null,
+        queueName: null,
+        requestId: null,
+        documents: [],
+        tokenId: null,
+        tokenNumber: null,
+        customerName: null
+    };
+
+    const steps = ['step-login', 'step-branch', 'step-service', 'step-documents', 'step-token'];
 
     // ==========================================
-    // CURRENT TOKEN
+    // UTILITY FUNCTIONS
     // ==========================================
-
-    let currentTokenId = null;
-    let currentQueueId = null;
-    let currentTokenNumber = null;
-    let currentCustomerName = null;
-    let currentQueueName = null;
-
-    let liveUpdateInterval = null;
-
-
-    // ==========================================
-    // SAVE TOKEN
-    // ==========================================
-
-    function saveToken() {
-
-        const tokenInfo = {
-            token_id: currentTokenId,
-            queue_id: currentQueueId,
-            token_number: currentTokenNumber,
-            customer_name: currentCustomerName,
-            queue_name: currentQueueName
-        };
-
-        localStorage.setItem(
-            "queuex_current_token",
-            JSON.stringify(tokenInfo)
-        );
+    function showMessage(elementId, text, isError = false) {
+        const el = document.getElementById(elementId);
+        el.textContent = text;
+        el.className = 'message ' + (isError ? 'error' : 'success');
     }
 
-
-    // ==========================================
-    // CLEAR SAVED TOKEN
-    // ==========================================
-
-    function clearSavedToken() {
-
-        localStorage.removeItem(
-            "queuex_current_token"
-        );
+    function hideMessage(elementId) {
+        document.getElementById(elementId).className = 'message';
     }
 
+    function showStep(stepName) {
+        steps.forEach(s => {
+            document.getElementById(s).classList.toggle('active', s === stepName);
+        });
+        window.scrollTo(0, 0);
+    }
+
+    function updateStepDots(currentStep) {
+        document.querySelectorAll('.step-dot').forEach((dot, idx) => {
+            dot.classList.remove('active', 'completed');
+            if (idx < currentStep) dot.classList.add('completed');
+            else if (idx === currentStep) dot.classList.add('active');
+        });
+    }
+
+    function apiRequest(url, options = {}) {
+        return fetch(url, {
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            },
+            credentials: 'same-origin',
+            ...options
+        });
+    }
+
+    function setLoading(btn, isLoading) {
+        btn.disabled = isLoading;
+        if (isLoading) btn.dataset.originalText = btn.textContent;
+        btn.textContent = isLoading ? (btn.dataset.loadingText || 'Loading...') : btn.dataset.originalText;
+    }
 
     // ==========================================
-    // LOAD SAVED TOKEN
+    // LOGIN STEP
     // ==========================================
+    document.querySelectorAll('.login-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentState.userType = tab.dataset.tab;
+            document.getElementById('login-btn').textContent = currentState.userType === 'customer' ? 'Sign In' : 'Sign In as Staff';
+        });
+    });
 
-    function loadSavedToken() {
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('login-btn');
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value;
 
-        const saved =
-            localStorage.getItem(
-                "queuex_current_token"
-            );
-
-        if (!saved) {
-            return false;
-        }
+        setLoading(btn, true);
+        hideMessage('login-message');
 
         try {
-
-            const tokenInfo =
-                JSON.parse(saved);
-
-            if (
-                !tokenInfo.token_id ||
-                !tokenInfo.queue_id
-            ) {
-                clearSavedToken();
-                return false;
-            }
-
-            currentTokenId =
-                Number(tokenInfo.token_id);
-
-            currentQueueId =
-                Number(tokenInfo.queue_id);
-
-            currentTokenNumber =
-                tokenInfo.token_number;
-
-            currentCustomerName =
-                tokenInfo.customer_name;
-
-            currentQueueName =
-                tokenInfo.queue_name || "";
-
-
-            document.getElementById(
-                "token-number"
-            ).textContent =
-                currentTokenNumber;
-
-
-            document.getElementById(
-                "customer-name"
-            ).textContent =
-                currentCustomerName || "";
-
-
-            document.getElementById(
-                "queue-name"
-            ).textContent =
-                currentQueueName;
-
-
-            document.getElementById(
-                "token-form"
-            ).style.display =
-                "none";
-
-
-            document.getElementById(
-                "token-result"
-            ).style.display =
-                "block";
-
-
-            startLiveUpdates();
-
-            return true;
-
-        } catch (error) {
-
-            console.error(
-                "Saved token error:",
-                error
-            );
-
-            clearSavedToken();
-
-            return false;
-        }
-    }
-
-
-    // ==========================================
-    // LOAD QUEUES
-    // ==========================================
-
-    async function loadQueues() {
-
-        const queueSelect =
-            document.getElementById("queue");
-
-        try {
-
-            const response =
-                await fetch(
-                    "/api/queues?_=" + Date.now(),
-                    {
-                        cache: "no-store"
-                    }
-                );
-
-            if (!response.ok) {
-                throw new Error(
-                    "Failed to load queues"
-                );
-            }
-
-            const queues =
-                await response.json();
-
-            queueSelect.innerHTML = "";
-
-            if (!queues.length) {
-
-                queueSelect.innerHTML =
-                    '<option value="">No active queues</option>';
-
-                return;
-            }
-
-
-            const defaultOption =
-                document.createElement("option");
-
-            defaultOption.value = "";
-
-            defaultOption.textContent =
-                "Select a service queue";
-
-            queueSelect.appendChild(
-                defaultOption
-            );
-
-
-            queues.forEach(queue => {
-
-                const option =
-                    document.createElement("option");
-
-                option.value =
-                    queue.queue_id;
-
-                option.textContent =
-                    `${queue.branch_name} - ${queue.service_name}`;
-
-                queueSelect.appendChild(
-                    option
-                );
-
+            const endpoint = currentState.userType === 'customer' ? '/api/auth/customer/login' : '/api/auth/login';
+            const res = await apiRequest(endpoint, {
+                method: 'POST',
+                body: JSON.stringify({ username, password })
             });
 
-        } catch (error) {
+            const data = await res.json();
 
-            console.error(
-                "Queue loading error:",
-                error
-            );
+            if (!res.ok) {
+                throw new Error(data.error || 'Login failed');
+            }
 
-            queueSelect.innerHTML =
-                '<option value="">Failed to load queues</option>';
+            currentState.user = data.account;
+            currentState.customerName = data.account.full_name || data.account.username;
+            showMessage('login-message', `Welcome, ${currentState.customerName}!`);
+
+            setTimeout(() => {
+                setLoading(btn, false);
+                if (currentState.userType === 'customer') {
+                    loadBranches();
+                    showStep('step-branch');
+                    updateStepDots(1);
+                } else {
+                    window.location.href = '/staff';
+                }
+            }, 500);
+
+        } catch (err) {
+            setLoading(btn, false);
+            showMessage('login-message', err.message, true);
+        }
+    });
+
+    // ==========================================
+    // BRANCH STEP
+    // ==========================================
+    async function loadBranches() {
+        try {
+            const res = await apiRequest('/api/branches');
+            const branches = await res.json();
+
+            const select = document.getElementById('branch-select');
+            select.innerHTML = '<option value="">Select a branch</option>';
+            branches.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b.branch_id;
+                opt.textContent = b.name;
+                select.appendChild(opt);
+            });
+        } catch (err) {
+            showMessage('branch-message', 'Failed to load branches', true);
         }
     }
 
+    document.getElementById('branch-next').addEventListener('click', () => {
+        const select = document.getElementById('branch-select');
+        if (!select.value) {
+            showMessage('branch-message', 'Please select a branch', true);
+            return;
+        }
+        currentState.branchId = parseInt(select.value);
+        currentState.branchName = select.options[select.selectedIndex].text;
+        loadServices();
+        showStep('step-service');
+        updateStepDots(2);
+    });
+
+    document.getElementById('branch-back').addEventListener('click', () => {
+        showStep('step-login');
+        updateStepDots(0);
+    });
 
     // ==========================================
-    // UPDATE TOKEN
+    // SERVICE STEP
     // ==========================================
+    async function loadServices() {
+        document.getElementById('selected-branch-display').textContent = `Branch: ${currentState.branchName}`;
 
-    async function updateTokenStatus() {
+        try {
+            const res = await apiRequest('/api/services');
+            const services = await res.json();
 
-        if (
-            !currentTokenId ||
-            !currentQueueId
-        ) {
+            const select = document.getElementById('service-select');
+            select.innerHTML = '<option value="">Select a service</option>';
+            services.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.service_id;
+                opt.textContent = `${s.name} (${s.estimated_duration_minutes} min)`;
+                opt.dataset.serviceName = s.name;
+                opt.dataset.duration = s.estimated_duration_minutes;
+                select.appendChild(opt);
+            });
+
+            document.getElementById('service-documents').classList.add('hidden');
+        } catch (err) {
+            showMessage('service-message', 'Failed to load services', true);
+        }
+    }
+
+    document.getElementById('service-select').addEventListener('change', async () => {
+        const select = document.getElementById('service-select');
+        if (!select.value) {
+            document.getElementById('service-documents').classList.add('hidden');
             return;
         }
 
+        currentState.serviceId = parseInt(select.value);
+        currentState.serviceName = select.options[select.selectedIndex].dataset.serviceName;
+        await loadServiceDocuments();
+    });
+
+    async function loadServiceDocuments() {
         try {
+            const res = await apiRequest(`/api/services/${currentState.serviceId}/documents`);
+            const documents = await res.json();
 
-            // Get token status
+            currentState.documents = documents;
+            const container = document.getElementById('service-documents');
+            container.classList.remove('hidden');
+            container.innerHTML = '';
 
-            const tokenResponse =
-                await fetch(
-                    `/api/tokens/${currentTokenId}?_=${Date.now()}`,
-                    {
-                        cache: "no-store"
-                    }
-                );
-
-            if (!tokenResponse.ok) {
-                return;
-            }
-
-            const tokenData =
-                await tokenResponse.json();
-
-
-            // Get queue information
-
-            const queueResponse =
-                await fetch(
-                    `/api/queues/${currentQueueId}?_=${Date.now()}`,
-                    {
-                        cache: "no-store"
-                    }
-                );
-
-            if (!queueResponse.ok) {
-                return;
-            }
-
-            const queueData =
-                await queueResponse.json();
-
-
-            // ==================================
-            // UPDATE TOKEN
-            // ==================================
-
-            currentTokenNumber =
-                tokenData.token_number;
-
-            document.getElementById(
-                "token-number"
-            ).textContent =
-                tokenData.token_number;
-
-
-            // ==================================
-            // UPDATE CUSTOMER NAME
-            // ==================================
-
-            if (tokenData.customer_name) {
-
-                currentCustomerName =
-                    tokenData.customer_name;
-
-                document.getElementById(
-                    "customer-name"
-                ).textContent =
-                    tokenData.customer_name;
-            }
-
-
-            // ==================================
-            // UPDATE QUEUE NAME
-            // ==================================
-
-            currentQueueName =
-                `${queueData.branch_name} - ${queueData.service_name}`;
-
-            document.getElementById(
-                "queue-name"
-            ).textContent =
-                currentQueueName;
-
-
-            // ==================================
-            // PEOPLE AHEAD
-            // ==================================
-
-            let peopleAhead = 0;
-
-            const status =
-                String(
-                    tokenData.status || ""
-                ).toLowerCase();
-
-
-            if (status === "waiting") {
-
-                const waitingTokens =
-                    (queueData.tokens || [])
-                        .filter(
-                            token =>
-                                String(
-                                    token.status
-                                ).toLowerCase() ===
-                                "waiting"
-                        );
-
-
-                peopleAhead =
-                    waitingTokens.filter(
-                        token =>
-                            Number(
-                                token.token_number
-                            ) <
-                            Number(
-                                tokenData.token_number
-                            )
-                    ).length;
-            }
-
-
-            // ==================================
-            // ESTIMATED WAIT
-            // ==================================
-
-            const serviceTime =
-                Number(
-                    queueData.estimated_duration_minutes
-                ) || 0;
-
-
-            const estimatedWait =
-                peopleAhead *
-                serviceTime;
-
-
-            document.getElementById(
-                "people-ahead"
-            ).textContent =
-                peopleAhead;
-
-
-            document.getElementById(
-                "estimated-wait"
-            ).textContent =
-                estimatedWait;
-
-
-            // ==================================
-            // UPDATE STATUS
-            // ==================================
-
-            updateStatus(
-                tokenData.status
-            );
-
-
-            // ==================================
-            // SAVE LATEST TOKEN INFORMATION
-            // ==================================
-
-            saveToken();
-
-
-            // ==================================
-            // STOP POLLING AFTER FINAL STATE
-            // ==================================
-
-            if (
-                status === "completed" ||
-                status === "no_show" ||
-                status === "no-show"
-            ) {
-
-                stopLiveUpdates();
-
-            }
-
-        } catch (error) {
-
-            console.error(
-                "Live update error:",
-                error
-            );
+            documents.forEach(doc => {
+                const item = document.createElement('div');
+                item.className = 'document-item ' + (doc.is_required ? 'required' : 'optional');
+                item.innerHTML = `
+                    <div class="document-info">
+                        <div class="document-name">${doc.name}</div>
+                        ${doc.description ? `<div class="document-description">${doc.description}</div>` : ''}
+                    </div>
+                    <span class="document-badge ${doc.is_required ? 'required' : 'optional'}">
+                        ${doc.is_required ? 'Required' : 'Optional'}
+                    </span>
+                `;
+                container.appendChild(item);
+            });
+        } catch (err) {
+            showMessage('service-message', 'Failed to load document requirements', true);
         }
     }
 
+    document.getElementById('service-next').addEventListener('click', () => {
+        if (!currentState.serviceId) {
+            showMessage('service-message', 'Please select a service', true);
+            return;
+        }
+        showStep('step-documents');
+        updateStepDots(3);
+        renderDocumentConfirmation();
+    });
+
+    document.getElementById('service-back').addEventListener('click', () => {
+        showStep('step-branch');
+        updateStepDots(1);
+    });
 
     // ==========================================
-    // UPDATE STATUS DISPLAY
+    // DOCUMENTS STEP
     // ==========================================
+    function renderDocumentConfirmation() {
+        document.getElementById('selected-service-display').textContent = `Service: ${currentState.serviceName}`;
 
-    function updateStatus(status) {
+        const container = document.getElementById('documents-list');
+        container.innerHTML = '';
 
-        const statusElement =
-            document.getElementById(
-                "queue-status"
-            );
+        currentState.documents.forEach(doc => {
+            const item = document.createElement('div');
+            item.className = 'document-item ' + (doc.is_required ? 'required' : 'optional');
+            item.innerHTML = `
+                <div class="document-info">
+                    <div class="document-name">${doc.name}</div>
+                    ${doc.description ? `<div class="document-description">${doc.description}</div>` : ''}
+                </div>
+                <span class="document-badge ${doc.is_required ? 'required' : 'optional'}">
+                    ${doc.is_required ? 'Required' : 'Optional'}
+                </span>
+            `;
+            container.appendChild(item);
+        });
 
-        const normalizedStatus =
-            String(
-                status || "waiting"
-            ).toLowerCase();
-
-
-        statusElement.className =
-            "status";
-
-
-        if (
-            normalizedStatus === "called"
-        ) {
-
-            statusElement.textContent =
-                "CALLED";
-
-            statusElement.classList.add(
-                "called"
-            );
-
-        }
-
-        else if (
-            normalizedStatus === "serving"
-        ) {
-
-            statusElement.textContent =
-                "SERVING";
-
-            statusElement.classList.add(
-                "serving"
-            );
-
-        }
-
-        else if (
-            normalizedStatus === "completed"
-        ) {
-
-            statusElement.textContent =
-                "COMPLETED";
-
-            statusElement.classList.add(
-                "completed"
-            );
-
-        }
-
-        else if (
-            normalizedStatus === "no_show" ||
-            normalizedStatus === "no-show"
-        ) {
-
-            statusElement.textContent =
-                "NO SHOW";
-
-            statusElement.classList.add(
-                "no-show"
-            );
-
-        }
-
-        else {
-
-            statusElement.textContent =
-                "WAITING";
-        }
+        updateReadinessSummary();
     }
 
+    function updateReadinessSummary() {
+        const summary = document.getElementById('readiness-summary');
+        const requiredDocs = currentState.documents.filter(d => d.is_required);
+        const availableRequired = requiredDocs.filter(d => d.readiness_status === 'available');
+
+        const allAvailable = requiredDocs.length > 0 && availableRequired.length === requiredDocs.length;
+
+        summary.className = 'readiness-summary' + (allAvailable ? '' : ' incomplete');
+
+        let html = '<h3>' + (allAvailable ? '✓ All required documents available' : '⚠ Some required documents pending') + '</h3>';
+        html += '<div class="progress-bar"><div class="progress-fill" style="width: ' + (requiredDocs.length > 0 ? (availableRequired.length / requiredDocs.length * 100) : 0) + '%"></div></div>';
+        html += '<p style="font-size: 13px;">' + availableRequired.length + ' of ' + requiredDocs.length + ' required documents available</p>';
+
+        requiredDocs.forEach(doc => {
+            const isAvailable = doc.readiness_status === 'available';
+            html += `
+                <div class="readiness-item">
+                    <span class="${isAvailable ? 'check-icon' : 'cross-icon'}">${isAvailable ? '✓' : '✗'}</span>
+                    <span>${doc.name} (Required)</span>
+                    <span style="margin-left: auto; color: ${isAvailable ? '#10b981' : '#dc2626'}; font-size: 12px;">${isAvailable ? 'Available' : 'Pending'}</span>
+                </div>
+            `;
+        });
+
+        summary.innerHTML = html;
+    }
+
+    document.getElementById('documents-confirm').addEventListener('click', async () => {
+        const requiredDocs = currentState.documents.filter(d => d.is_required);
+        const availableRequired = requiredDocs.filter(d => d.readiness_status === 'available');
+
+        if (availableRequired.length !== requiredDocs.length) {
+            showMessage('documents-message', 'All required documents must be marked as available', true);
+            return;
+        }
+
+        const btn = document.getElementById('documents-confirm');
+        setLoading(btn, true);
+        hideMessage('documents-message');
+
+        try {
+            // First confirm readiness
+            const confirmRes = await apiRequest(`/api/customer-requests/${currentState.requestId}/confirm-readiness`, {
+                method: 'POST'
+            });
+            const confirmData = await confirmRes.json();
+            if (!confirmRes.ok) throw new Error(confirmData.error || 'Failed to confirm readiness');
+
+            // Then queue the request
+            const queueRes = await apiRequest(`/api/customer-requests/${currentState.requestId}/queue`, {
+                method: 'POST'
+            });
+            const queueData = await queueRes.json();
+            if (!queueRes.ok) throw new Error(queueData.error || 'Failed to queue request');
+
+            currentState.tokenId = queueData.token_id;
+            currentState.tokenNumber = queueData.token_number;
+            currentState.queueId = queueData.queue_id;
+
+            setLoading(btn, false);
+            showStep('step-token');
+            updateStepDots(4);
+            displayTokenResult();
+            startLiveUpdates();
+
+        } catch (err) {
+            setLoading(btn, false);
+            showMessage('documents-message', err.message, true);
+        }
+    });
+
+    document.getElementById('documents-back').addEventListener('click', () => {
+        showStep('step-service');
+        updateStepDots(2);
+    });
+
+    // Handle document readiness status updates
+    document.getElementById('documents-list').addEventListener('click', async (e) => {
+        const btn = e.target.closest('.status-btn');
+        if (!btn) return;
+
+        const item = btn.closest('.document-item');
+        const docId = parseInt(item.dataset.docId);
+        const status = btn.dataset.status;
+
+        if (btn.classList.contains('active-btn')) return;
+
+        try {
+            const res = await apiRequest(`/api/customer-requests/${currentState.requestId}/documents`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    document_id: docId,
+                    readiness_status: status
+                })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to update document status');
+            }
+
+            // Update local state
+            const doc = currentState.documents.find(d => d.document_id === docId);
+            if (doc) doc.readiness_status = status;
+
+            // Update UI
+            item.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active-btn'));
+            btn.classList.add('active-btn');
+            updateReadinessSummary();
+
+        } catch (err) {
+            showMessage('documents-message', err.message, true);
+        }
+    });
 
     // ==========================================
-    // START LIVE UPDATES
+    // TOKEN RESULT STEP
     // ==========================================
+    function displayTokenResult() {
+        document.getElementById('token-number').textContent = currentState.tokenNumber;
+        document.getElementById('customer-name').textContent = currentState.customerName;
+        document.getElementById('queue-name').textContent = currentState.queueName || 'Queue #' + currentState.queueId;
+
+        updateTokenStatus();
+    }
+
+    async function updateTokenStatus() {
+        try {
+            const res = await apiRequest(`/api/tokens/${currentState.tokenId}`);
+            const token = await res.json();
+
+            if (res.ok) {
+                const statusEl = document.getElementById('queue-status');
+                statusEl.textContent = token.status.toUpperCase();
+                statusEl.className = 'status ' + token.status;
+
+                document.getElementById('people-ahead').textContent = token.waiting_ahead !== undefined ? token.waiting_ahead : '--';
+                document.getElementById('estimated-wait').textContent = token.estimated_wait_minutes !== undefined ? token.estimated_wait_minutes : '--';
+            }
+        } catch (err) {
+            console.error('Failed to update token status:', err);
+        }
+    }
 
     function startLiveUpdates() {
-
-        stopLiveUpdates();
-
-        // Update immediately
-        updateTokenStatus();
-
-        // Then every 2 seconds
-        liveUpdateInterval =
-            setInterval(
-                updateTokenStatus,
-                2000
-            );
+        if (window.liveUpdateInterval) clearInterval(window.liveUpdateInterval);
+        window.liveUpdateInterval = setInterval(updateTokenStatus, 2000);
     }
-
-
-    // ==========================================
-    // STOP LIVE UPDATES
-    // ==========================================
 
     function stopLiveUpdates() {
-
-        if (liveUpdateInterval !== null) {
-
-            clearInterval(
-                liveUpdateInterval
-            );
-
-            liveUpdateInterval = null;
+        if (window.liveUpdateInterval) {
+            clearInterval(window.liveUpdateInterval);
+            window.liveUpdateInterval = null;
         }
     }
 
+    document.getElementById('new-request-btn').addEventListener('click', () => {
+        stopLiveUpdates();
+        currentState = { user: currentState.user, userType: 'customer', customerName: currentState.customerName };
+        showStep('step-branch');
+        updateStepDots(1);
+        loadBranches();
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+        stopLiveUpdates();
+        await apiRequest('/api/auth/logout', { method: 'POST' });
+        currentState = { userType: 'customer' };
+        document.getElementById('login-form').reset();
+        showStep('step-login');
+        updateStepDots(0);
+    });
 
     // ==========================================
-    // GET TOKEN
+    // INITIALIZE
     // ==========================================
-
-    document
-        .getElementById("token-form")
-        .addEventListener(
-            "submit",
-            async function(event) {
-
-                event.preventDefault();
-
-
-                const name =
-                    document.getElementById("name")
-                        .value
-                        .trim();
-
-
-                const phone =
-                    document.getElementById("phone")
-                        .value
-                        .trim();
-
-
-                const queueId =
-                    document.getElementById("queue")
-                        .value;
-
-
-                const button =
-                    document.getElementById("submit-btn");
-
-
-                const message =
-                    document.getElementById("message");
-
-
-                const result =
-                    document.getElementById("token-result");
-
-
-                // Validation
-
-                if (
-                    !name ||
-                    !phone ||
-                    !queueId
-                ) {
-
-                    message.className =
-                        "message error";
-
-                    message.textContent =
-                        "Please fill all fields.";
-
-                    return;
-                }
-
-
-                button.disabled = true;
-
-                button.textContent =
-                    "Creating Token...";
-
-
-                message.className =
-                    "message";
-
-                message.textContent =
-                    "";
-
-
-                try {
-
-                    // ==================================
-                    // GET SELECTED QUEUE NAME
-                    // ==================================
-
-                    const queueSelect =
-                        document.getElementById("queue");
-
-                    const selectedOption =
-                        queueSelect.options[
-                            queueSelect.selectedIndex
-                        ];
-
-                    currentQueueName =
-                        selectedOption.textContent;
-
-
-                    // ==================================
-                    // CREATE CUSTOMER + TOKEN
-                    // ==================================
-
-                    const response =
-                        await fetch(
-                            "/api/customer-token",
-                            {
-                                method: "POST",
-
-                                headers: {
-                                    "Content-Type":
-                                        "application/json"
-                                },
-
-                                body:
-                                    JSON.stringify({
-                                        full_name:
-                                            name,
-
-                                        phone:
-                                            phone,
-
-                                        email:
-                                            null,
-
-                                        queue_id:
-                                            Number(queueId)
-                                    })
-                            }
-                        );
-
-
-                    const tokenData =
-                        await response.json();
-
-
-                    if (!response.ok) {
-
-                        throw new Error(
-                            tokenData.error ||
-                            "Failed to create customer and issue token"
-                        );
+    document.addEventListener('DOMContentLoaded', () => {
+        // Check for existing session
+        apiRequest('/api/auth/me')
+            .then(res => res.json())
+            .then(data => {
+                if (data.account) {
+                    currentState.user = data.account;
+                    currentState.userType = data.account.account_type || 'customer';
+                    currentState.customerName = data.account.full_name || data.account.username;
+                    if (currentState.userType === 'customer') {
+                        loadBranches();
+                        showStep('step-branch');
+                        updateStepDots(1);
+                    } else {
+                        window.location.href = '/staff';
                     }
-
-
-                    // ==================================
-                    // SAVE CURRENT TOKEN
-                    // ==================================
-
-                    currentTokenId =
-                        Number(
-                            tokenData.token_id
-                        );
-
-                    currentQueueId =
-                        Number(queueId);
-
-                    currentTokenNumber =
-                        tokenData.token_number;
-
-                    currentCustomerName =
-                        name;
-
-
-                    saveToken();
-
-
-                    // ==================================
-                    // SHOW TOKEN
-                    // ==================================
-
-                    document.getElementById(
-                        "token-number"
-                    ).textContent =
-                        tokenData.token_number;
-
-
-                    document.getElementById(
-                        "customer-name"
-                    ).textContent =
-                        name;
-
-
-                    document.getElementById(
-                        "queue-name"
-                    ).textContent =
-                        currentQueueName;
-
-
-                    document.getElementById(
-                        "token-form"
-                    ).style.display =
-                        "none";
-
-
-                    result.style.display =
-                        "block";
-
-
-                    message.className =
-                        "message success";
-
-
-                    message.textContent =
-                        `Token created successfully for ${name}.`;
-
-
-                    // ==================================
-                    // START LIVE TRACKING
-                    // ==================================
-
-                    startLiveUpdates();
-
-
-                } catch (error) {
-
-                    console.error(
-                        "Token creation error:",
-                        error
-                    );
-
-                    message.className =
-                        "message error";
-
-                    message.textContent =
-                        error.message ||
-                        "Something went wrong.";
-
-                } finally {
-
-                    button.disabled =
-                        false;
-
-                    button.textContent =
-                        "Get Token";
                 }
-
-            }
-        );
-
-
-    // ==========================================
-    // GET ANOTHER TOKEN
-    // ==========================================
-
-    document
-        .getElementById("new-token-btn")
-        .addEventListener(
-            "click",
-            function() {
-
-                // Stop tracking
-                stopLiveUpdates();
-
-
-                // Clear saved token
-                clearSavedToken();
-
-
-                // Reset variables
-                currentTokenId = null;
-                currentQueueId = null;
-                currentTokenNumber = null;
-                currentCustomerName = null;
-                currentQueueName = null;
-
-
-                // Hide result
-                document.getElementById(
-                    "token-result"
-                ).style.display =
-                    "none";
-
-
-                // Show form
-                document.getElementById(
-                    "token-form"
-                ).style.display =
-                    "block";
-
-
-                // Reset form
-                document.getElementById(
-                    "token-form"
-                ).reset();
-
-
-                // Clear message
-                document.getElementById(
-                    "message"
-                ).className =
-                    "message";
-
-                document.getElementById(
-                    "message"
-                ).textContent =
-                    "";
-
-
-                // Load queues
-                loadQueues();
-            }
-        );
-
-
-    // ==========================================
-    // PAGE INITIALIZATION
-    // ==========================================
-
-    async function initializePage() {
-
-        await loadQueues();
-
-        const recovered =
-            loadSavedToken();
-
-        if (recovered) {
-
-            console.log(
-                "QueueX token recovered from browser."
-            );
-        }
-    }
-
-
-    initializePage();
-
+            })
+            .catch(() => {
+                // No session, stay on login
+            });
+    });
 </script>
-
 </body>
-
 </html>

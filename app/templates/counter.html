@@ -4,858 +4,448 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Counter {{ counter.name }} - QueueX</title>
-
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-        }
-
-        header {
-            background: #059669;
-            color: white;
-            padding: 24px;
-            border-radius: 8px;
-            margin-bottom: 24px;
-            text-align: center;
-        }
-
-        h1 {
-            font-size: 28px;
-            font-weight: 600;
-        }
-
-        .subtitle {
-            opacity: 0.9;
-            margin-top: 4px;
-            font-size: 14px;
-        }
-
-        .card {
-            background: white;
-            border-radius: 8px;
-            padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 16px;
-        }
-
-        .card h3 {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            color: #1f2937;
-        }
-
-        .current-token {
-            text-align: center;
-        }
-
-        .token-number-large {
-            font-size: 96px;
-            font-weight: 700;
-            color: #2563eb;
-            line-height: 1;
-        }
-
-        .token-customer {
-            font-size: 24px;
-            font-weight: 500;
-            color: #1f2937;
-            margin: 16px 0;
-        }
-
-        .token-status {
-            display: inline-block;
-            padding: 8px 24px;
-            border-radius: 24px;
-            font-size: 14px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .status-waiting {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .status-called {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .status-serving {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            margin-top: 24px;
-        }
-
-        .btn {
-            padding: 14px 32px;
-            font-size: 16px;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn-primary {
-            background: #2563eb;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #1d4ed8;
-        }
-
-        .btn-success {
-            background: #059669;
-            color: white;
-        }
-
-        .btn-success:hover {
-            background: #047857;
-        }
-
-        .btn-danger {
-            background: #dc2626;
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #b91c1c;
-        }
-
-        .waiting-list {
-            list-style: none;
-        }
-
-        .waiting-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            background: #f9fafb;
-            border-radius: 6px;
-            margin-bottom: 8px;
-        }
-
-        .waiting-number {
-            font-size: 20px;
-            font-weight: 600;
-            color: #2563eb;
-        }
-
-        .waiting-name {
-            font-size: 16px;
-            color: #1f2937;
-        }
-
-        .empty {
-            text-align: center;
-            color: #9ca3af;
-            padding: 40px;
-        }
-
-        .back-link {
-            display: inline-block;
-            margin-top: 24px;
-            color: #2563eb;
-            text-decoration: none;
-        }
-
-        .back-link:hover {
-            text-decoration: underline;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; min-height: 100vh; padding: 20px; }
+        .container { max-width: 700px; margin: 0 auto; }
+        header { background: #059669; color: white; padding: 24px; border-radius: 8px; margin-bottom: 24px; text-align: center; }
+        h1 { font-size: 28px; font-weight: 600; }
+        .subtitle { opacity: 0.9; margin-top: 4px; font-size: 14px; }
+        .card { background: white; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px; }
+        .card h3 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #1f2937; }
+        .current-token { text-align: center; }
+        .token-number-large { font-size: 96px; font-weight: 700; color: #2563eb; line-height: 1; }
+        .token-customer { font-size: 24px; font-weight: 500; color: #1f2937; margin: 16px 0; }
+        .token-meta { display: flex; justify-content: center; gap: 24px; margin-bottom: 16px; font-size: 14px; color: #6b7280; }
+        .token-meta span { display: flex; align-items: center; gap: 6px; }
+        .token-status { display: inline-block; padding: 8px 24px; border-radius: 24px; font-size: 14px; font-weight: 600; text-transform: uppercase; }
+        .status-waiting { background: #fef3c7; color: #92400e; }
+        .status-called { background: #dbeafe; color: #1e40af; }
+        .status-serving { background: #d1fae5; color: #065f46; }
+        .status-completed { background: #e5e7eb; color: #374151; }
+        .status-no-show { background: #fee2e2; color: #991b1b; }
+        .btn-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }
+        .btn { padding: 14px 28px; font-size: 15px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s; min-width: 140px; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+        .btn-success { background: #059669; color: white; }
+        .btn-success:hover:not(:disabled) { background: #047857; }
+        .btn-warning { background: #d97706; color: white; }
+        .btn-warning:hover:not(:disabled) { background: #b45309; }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+        .btn-secondary { background: #6b7280; color: white; }
+        .btn-secondary:hover:not(:disabled) { background: #4b5563; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .waiting-list { list-style: none; }
+        .waiting-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #f9fafb; border-radius: 6px; margin-bottom: 8px; }
+        .waiting-info { display: flex; flex-direction: column; gap: 4px; }
+        .waiting-number { font-size: 18px; font-weight: 600; color: #2563eb; }
+        .waiting-name { font-size: 15px; color: #1f2937; }
+        .waiting-meta { font-size: 12px; color: #9ca3af; }
+        .waiting-actions { display: flex; gap: 8px; }
+        .btn-sm { padding: 8px 16px; font-size: 13px; min-width: auto; }
+        .empty { text-align: center; color: #9ca3af; padding: 40px; }
+        .back-link { display: inline-block; margin-top: 24px; color: #2563eb; text-decoration: none; }
+        .back-link:hover { text-decoration: underline; }
+        .status-indicator { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; background: #d1fae5; color: #065f46; border-radius: 20px; font-size: 14px; font-weight: 500; }
+        .status-indicator.offline { background: #fee2e2; color: #991b1b; }
+        .call-specific-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; }
+        .call-specific-modal.active { display: flex; }
+        .modal-content { background: white; padding: 24px; border-radius: 12px; width: 100%; max-width: 400px; }
+        .modal-content h3 { margin-bottom: 16px; color: #1f2937; }
+        .modal-content .field { margin-bottom: 16px; }
+        .modal-content input { width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 15px; }
+        .modal-content .btn-group { margin-top: 24px; }
+        .modal-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+        @media (max-width: 600px) { .token-number-large { font-size: 72px; } .btn-group { flex-direction: column; } .btn { width: 100%; } .waiting-actions { flex-direction: column; width: 100%; } .btn-sm { width: 100%; } }
     </style>
 </head>
-
 <body>
-
 <div class="container">
-
     <header>
         <h1>Counter {{ counter.name }}</h1>
-
-        <p class="subtitle">
-            {{ counter.branch_name }} • {{ counter.queue_name }}
-        </p>
+        <p class="subtitle">{{ counter.branch_name }} • {{ counter.queue_name }}</p>
+        <div class="status-indicator" id="connectionStatus">Live</div>
     </header>
 
-
     <!-- CURRENT TOKEN -->
-
     <div class="card">
-
         <h3>Current Token</h3>
-
         <div class="current-token">
-
-            <div class="token-number-large" id="tokenNumber">
-                —
+            <div class="token-number-large" id="tokenNumber">—</div>
+            <div class="token-customer" id="tokenCustomer">No token called</div>
+            <div class="token-meta" id="tokenMeta" style="display: none;">
+                <span>Queue: <span id="metaQueue">—</span></span>
+                <span>Service: <span id="metaService">—</span></span>
             </div>
-
-            <div class="token-customer" id="tokenCustomer">
-                No token called
-            </div>
-
-            <span class="token-status status-waiting" id="tokenStatus">
-                Waiting
-            </span>
-
+            <span class="token-status status-waiting" id="tokenStatus">Waiting</span>
         </div>
-
-
-        <div class="btn-group">
-
-            <button
-                class="btn btn-primary"
-                id="btnCall"
-                onclick="callNext()">
-                Call Next
-            </button>
-
-            <button
-                class="btn btn-success"
-                id="btnComplete"
-                onclick="startServing()"
-                style="display:none;">
-                Start Serving
-            </button>
-
-            <button
-                class="btn btn-danger"
-                id="btnNoShow"
-                onclick="noShowToken()"
-                style="display:none;">
-                No Show
-            </button>
-
+        <div class="btn-group" id="actionButtons">
+            <button class="btn btn-primary" id="btnCall" onclick="callNext()">Call Next</button>
+            <button class="btn btn-secondary" id="btnCallSpecific" onclick="openCallSpecific()">Call Specific</button>
+            <button class="btn btn-success" id="btnServe" onclick="serveToken()" style="display:none;">Start Serving</button>
+            <button class="btn btn-success" id="btnComplete" onclick="completeToken()" style="display:none;">Complete</button>
+            <button class="btn btn-warning" id="btnNoShow" onclick="noShowToken()" style="display:none;">No Show</button>
+            <button class="btn btn-secondary" id="btnReissue" onclick="reissueToken()" style="display:none;">Reissue</button>
         </div>
-
     </div>
-
 
     <!-- WAITING TOKENS -->
-
     <div class="card">
-
-        <h3>Waiting Tokens</h3>
-
+        <h3>Waiting Tokens <span id="waitingCount" style="font-size: 14px; font-weight: 400; color: #6b7280;"></span></h3>
         <ul class="waiting-list" id="waitingList">
-
-            <li class="empty">
-                Loading...
-            </li>
-
+            <li class="empty">Loading...</li>
         </ul>
-
     </div>
 
-
-    <a href="/" class="back-link">
-        ← Back to Dashboard
-    </a>
-
+    <a href="/staff" class="back-link">← Back to Staff Portal</a>
 </div>
 
+<!-- CALL SPECIFIC MODAL -->
+<div class="call-specific-modal" id="callSpecificModal">
+    <div class="modal-content">
+        <h3>Call Specific Token</h3>
+        <div class="field">
+            <label for="specificTokenNumber">Token Number</label>
+            <input type="number" id="specificTokenNumber" placeholder="Enter token number" min="1">
+        </div>
+        <div id="callSpecificMessage" class="message"></div>
+        <div class="btn-group">
+            <button class="btn btn-secondary" onclick="closeCallSpecific()">Cancel</button>
+            <button class="btn btn-primary" onclick="callSpecificToken()">Call Token</button>
+        </div>
+    </div>
+</div>
 
 <script>
+    let currentTokenId = null;
+    let currentTokenData = null;
+    const counterId = {{ counter.counter_id }};
+    const queueId = {{ counter.queue_id }};
+    let refreshInterval = null;
+    let isConnected = true;
 
-let currentTokenId = null;
+    /* ============================================================
+       API HELPERS
+       ============================================================ */
+    async function apiRequest(url, options = {}) {
+        try {
+            const res = await fetch(url, {
+                headers: { 'Content-Type': 'application/json', ...options.headers },
+                credentials: 'same-origin',
+                ...options
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Request failed');
+            return data;
+        } catch (err) {
+            updateConnectionStatus(false);
+            throw err;
+        }
+    }
 
-const counterId = {{ counter.counter_id }};
-
-
-/* ============================================================
-   REFRESH
-   ============================================================ */
-
-async function refresh() {
-
-    try {
-
-        const response = await fetch(
-            '/api/queues/{{ counter.queue_id }}?_=' + Date.now(),
-            {
-                cache: 'no-store'
-            }
-        );
-
-        const queue = await response.json();
-
-        const allTokens = queue.tokens || [];
-
-
-        /* ====================================================
-           WAITING LIST
-           ==================================================== */
-
-        const waiting = allTokens.filter(
-            token => token.status === 'waiting'
-        );
-
-        const list =
-            document.getElementById('waitingList');
-
-
-        if (!waiting.length) {
-
-            list.innerHTML =
-                '<li class="empty">No waiting tokens</li>';
-
+    function updateConnectionStatus(connected) {
+        isConnected = connected;
+        const el = document.getElementById('connectionStatus');
+        if (connected) {
+            el.textContent = 'Live';
+            el.className = 'status-indicator';
         } else {
-
-            list.innerHTML = waiting.map(token => `
-
-                <li class="waiting-item">
-
-                    <span class="waiting-number">
-                        ${token.token_number}
-                    </span>
-
-                    <span class="waiting-name">
-                        ${token.customer_name}
-                    </span>
-
-                </li>
-
-            `).join('');
-
+            el.textContent = 'Offline';
+            el.className = 'status-indicator offline';
         }
-
-
-        /* ====================================================
-           FIND TOKENS BELONGING TO THIS COUNTER
-           ==================================================== */
-
-        const counterTokens = allTokens.filter(
-            token => token.counter_id == counterId
-        );
-
-
-        /* ====================================================
-           PRIORITY 1 — SERVING TOKEN
-           ==================================================== */
-
-        const servingTokens = counterTokens.filter(
-            token => token.status === 'serving'
-        );
-
-
-        if (servingTokens.length > 0) {
-
-            const servingToken =
-                getLatestToken(servingTokens);
-
-            currentTokenId =
-                servingToken.token_id;
-
-            showToken(servingToken);
-
-            return;
-        }
-
-
-        /* ====================================================
-           PRIORITY 2 — CALLED TOKEN
-           ==================================================== */
-
-        const calledTokens = counterTokens.filter(
-            token => token.status === 'called'
-        );
-
-
-        if (calledTokens.length > 0) {
-
-            const calledToken =
-                getLatestToken(calledTokens);
-
-            currentTokenId =
-                calledToken.token_id;
-
-            showToken(calledToken);
-
-            return;
-        }
-
-
-        /* ====================================================
-           PRIORITY 3 — NOTHING ACTIVE
-           ==================================================== */
-
-        currentTokenId = null;
-
-        showEmpty();
-
     }
 
-    catch (error) {
-
-        console.error(
-            'Refresh failed:',
-            error
-        );
-
+    function showMessage(elementId, text, isError = false) {
+        const el = document.getElementById(elementId);
+        el.textContent = text;
+        el.className = 'message ' + (isError ? 'error' : 'success');
     }
 
-}
+    function hideMessage(elementId) {
+        document.getElementById(elementId).className = 'message';
+    }
 
+    function setLoading(btn, isLoading) {
+        btn.disabled = isLoading;
+        if (isLoading) btn.dataset.originalText = btn.textContent;
+        btn.textContent = isLoading ? (btn.dataset.loadingText || 'Loading...') : btn.dataset.originalText;
+    }
 
-/* ============================================================
-   GET LATEST TOKEN
-   ============================================================ */
+    /* ============================================================
+       REFRESH - Poll queue status
+       ============================================================ */
+    async function refresh() {
+        try {
+            const queue = await apiRequest('/api/queues/' + queueId + '?_=' + Date.now(), { cache: 'no-store' });
+            updateConnectionStatus(true);
+            const allTokens = queue.tokens || [];
 
-function getLatestToken(tokens) {
+            /* ---- WAITING LIST ---- */
+            const waiting = allTokens.filter(t => t.status === 'waiting');
+            const list = document.getElementById('waitingList');
+            document.getElementById('waitingCount').textContent = waiting.length ? '(' + waiting.length + ')' : '';
 
-    return tokens.reduce(
-        (latest, token) => {
-
-            if (!latest) {
-                return token;
+            if (!waiting.length) {
+                list.innerHTML = '<li class="empty">No waiting tokens</li>';
+            } else {
+                list.innerHTML = waiting.map(token => `
+                    <li class="waiting-item">
+                        <div class="waiting-info">
+                            <span class="waiting-number">${token.token_number}</span>
+                            <span class="waiting-name">${token.customer_name}</span>
+                            <span class="waiting-meta">Queue: ${token.queue_name || '—'}</span>
+                        </div>
+                        <div class="waiting-actions">
+                            <button class="btn btn-primary btn-sm" onclick="callSpecificTokenByNumber(${token.token_number})">Call</button>
+                        </div>
+                    </li>
+                `).join('');
             }
 
-            if (!latest.called_at) {
-                return token;
+            /* ---- COUNTER TOKENS ---- */
+            const counterTokens = allTokens.filter(t => t.counter_id == counterId);
+            const servingTokens = counterTokens.filter(t => t.status === 'serving');
+            const calledTokens = counterTokens.filter(t => t.status === 'called');
+
+            if (servingTokens.length > 0) {
+                const servingToken = getLatestToken(servingTokens);
+                currentTokenId = servingToken.token_id;
+                currentTokenData = servingToken;
+                showToken(servingToken);
+                return;
             }
 
-            if (!token.called_at) {
-                return latest;
+            if (calledTokens.length > 0) {
+                const calledToken = getLatestToken(calledTokens);
+                currentTokenId = calledToken.token_id;
+                currentTokenData = calledToken;
+                showToken(calledToken);
+                return;
             }
-
-            return new Date(token.called_at) >
-                   new Date(latest.called_at)
-                ? token
-                : latest;
-
-        },
-        null
-    );
-
-}
-
-
-/* ============================================================
-   SHOW TOKEN
-   ============================================================ */
-
-function showToken(token) {
-
-    document.getElementById(
-        'tokenNumber'
-    ).textContent =
-        token.token_number;
-
-
-    document.getElementById(
-        'tokenCustomer'
-    ).textContent =
-        token.customer_name;
-
-
-    const statusElement =
-        document.getElementById('tokenStatus');
-
-
-    statusElement.textContent =
-        token.status;
-
-
-    statusElement.className =
-        'token-status status-' +
-        token.status;
-
-
-    const btnCall =
-        document.getElementById('btnCall');
-
-    const btnComplete =
-        document.getElementById('btnComplete');
-
-    const btnNoShow =
-        document.getElementById('btnNoShow');
-
-
-    /* --------------------------------
-       CALLED
-       -------------------------------- */
-
-    if (token.status === 'called') {
-
-        btnCall.style.display =
-            'inline-block';
-
-        btnComplete.style.display =
-            'inline-block';
-
-        btnComplete.textContent =
-            'Start Serving';
-
-        btnComplete.onclick =
-            startServing;
-
-        btnNoShow.style.display =
-            'inline-block';
-
-    }
-
-
-    /* --------------------------------
-       SERVING
-       -------------------------------- */
-
-    else if (token.status === 'serving') {
-
-        btnCall.style.display =
-            'none';
-
-        btnComplete.style.display =
-            'inline-block';
-
-        btnComplete.textContent =
-            'Complete';
-
-        btnComplete.onclick =
-            completeCurrentToken;
-
-        btnNoShow.style.display =
-            'none';
-
-    }
-
-}
-
-
-/* ============================================================
-   EMPTY STATE
-   ============================================================ */
-
-function showEmpty() {
-
-    document.getElementById(
-        'tokenNumber'
-    ).textContent =
-        '—';
-
-
-    document.getElementById(
-        'tokenCustomer'
-    ).textContent =
-        'No token called';
-
-
-    const status =
-        document.getElementById('tokenStatus');
-
-
-    status.textContent =
-        'Waiting';
-
-
-    status.className =
-        'token-status status-waiting';
-
-
-    document.getElementById(
-        'btnCall'
-    ).style.display =
-        'inline-block';
-
-
-    document.getElementById(
-        'btnComplete'
-    ).style.display =
-        'none';
-
-
-    document.getElementById(
-        'btnNoShow'
-    ).style.display =
-        'none';
-
-}
-
-
-/* ============================================================
-   CALL NEXT
-   ============================================================ */
-
-async function callNext() {
-
-    try {
-
-        const response = await fetch(
-            `/api/counters/${counterId}/call-next`,
-            {
-                method: 'POST',
-
-                headers: {
-                    'Content-Type':
-                        'application/json'
-                },
-
-                body: JSON.stringify({
-                    staff_id: 1
-                })
-            }
-        );
-
-
-        const data =
-            await response.json();
-
-
-        if (data.token_id) {
-
-            currentTokenId =
-                data.token_id;
-
-            showToken(data);
-
-            refresh();
-
-        }
-
-        else {
-
-            alert(
-                data.error ||
-                'No waiting tokens'
-            );
-
-        }
-
-    }
-
-    catch (error) {
-
-        console.error(error);
-
-        alert(
-            'Failed to call next token'
-        );
-
-    }
-
-}
-
-
-/* ============================================================
-   START SERVING
-   ============================================================ */
-
-async function startServing() {
-
-    if (!currentTokenId) {
-        return;
-    }
-
-
-    const tokenId =
-        currentTokenId;
-
-
-    try {
-
-        const response = await fetch(
-            `/api/tokens/${tokenId}/serve`,
-            {
-                method: 'POST'
-            }
-        );
-
-
-        if (response.ok) {
-
-            /*
-             * Do NOT manually change the token.
-             * Let the database become the source of truth.
-             */
-
-            await refresh();
-
-        }
-
-        else {
-
-            alert(
-                'Failed to start serving'
-            );
-
-        }
-
-    }
-
-    catch (error) {
-
-        console.error(error);
-
-        alert(
-            'Failed to start serving'
-        );
-
-    }
-
-}
-
-
-/* ============================================================
-   COMPLETE
-   ============================================================ */
-
-async function completeCurrentToken() {
-
-    if (!currentTokenId) {
-        return;
-    }
-
-
-    const tokenId =
-        currentTokenId;
-
-
-    try {
-
-        const response = await fetch(
-            `/api/tokens/${tokenId}/complete`,
-            {
-                method: 'POST'
-            }
-        );
-
-
-        if (response.ok) {
 
             currentTokenId = null;
+            currentTokenData = null;
+            showEmpty();
 
-            await refresh();
-
+        } catch (error) {
+            console.error('Refresh failed:', error);
         }
+    }
 
-        else {
+    function getLatestToken(tokens) {
+        return tokens.reduce((latest, token) => {
+            if (!latest) return token;
+            if (!latest.called_at) return token;
+            if (!token.called_at) return latest;
+            return new Date(token.called_at) > new Date(latest.called_at) ? token : latest;
+        }, null);
+    }
 
-            alert(
-                'Failed to complete token'
-            );
+    function showToken(token) {
+        document.getElementById('tokenNumber').textContent = token.token_number;
+        document.getElementById('tokenCustomer').textContent = token.customer_name;
+        document.getElementById('metaQueue').textContent = token.queue_name || '—';
+        document.getElementById('metaService').textContent = token.service_name || '—';
+        document.getElementById('tokenMeta').style.display = 'flex';
 
+        const statusEl = document.getElementById('tokenStatus');
+        statusEl.textContent = token.status;
+        statusEl.className = 'token-status status-' + token.status;
+
+        const btnCall = document.getElementById('btnCall');
+        const btnCallSpecific = document.getElementById('btnCallSpecific');
+        const btnServe = document.getElementById('btnServe');
+        const btnComplete = document.getElementById('btnComplete');
+        const btnNoShow = document.getElementById('btnNoShow');
+        const btnReissue = document.getElementById('btnReissue');
+
+        // Hide all by default
+        [btnCall, btnCallSpecific, btnServe, btnComplete, btnNoShow, btnReissue].forEach(b => b.style.display = 'none');
+
+        if (token.status === 'called') {
+            btnServe.style.display = 'inline-flex';
+            btnNoShow.style.display = 'inline-flex';
+            btnReissue.style.display = 'inline-flex';
+        } else if (token.status === 'serving') {
+            btnComplete.style.display = 'inline-flex';
+            btnNoShow.style.display = 'inline-flex';
+            btnReissue.style.display = 'inline-flex';
+        } else {
+            btnCall.style.display = 'inline-flex';
+            btnCallSpecific.style.display = 'inline-flex';
         }
-
     }
 
-    catch (error) {
-
-        console.error(error);
-
-        alert(
-            'Failed to complete token'
-        );
-
+    function showEmpty() {
+        document.getElementById('tokenNumber').textContent = '—';
+        document.getElementById('tokenCustomer').textContent = 'No token called';
+        document.getElementById('tokenMeta').style.display = 'none';
+        const statusEl = document.getElementById('tokenStatus');
+        statusEl.textContent = 'Waiting';
+        statusEl.className = 'token-status status-waiting';
+        document.getElementById('btnCall').style.display = 'inline-flex';
+        document.getElementById('btnCallSpecific').style.display = 'inline-flex';
+        document.getElementById('btnServe').style.display = 'none';
+        document.getElementById('btnComplete').style.display = 'none';
+        document.getElementById('btnNoShow').style.display = 'none';
+        document.getElementById('btnReissue').style.display = 'none';
     }
 
-}
-
-
-/* ============================================================
-   NO SHOW
-   ============================================================ */
-
-async function noShowToken() {
-
-    if (!currentTokenId) {
-        return;
-    }
-
-
-    try {
-
-        const response = await fetch(
-            `/api/tokens/${currentTokenId}/no-show`,
-            {
-                method: 'POST',
-
-                headers: {
-                    'Content-Type':
-                        'application/json'
-                },
-
-                body: JSON.stringify({
-                    window_minutes: 5
-                })
+    /* ============================================================
+       TOKEN ACTIONS
+       ============================================================ */
+    async function callNext() {
+        const btn = document.getElementById('btnCall');
+        setLoading(btn, true);
+        try {
+            const token = await apiRequest('/api/counters/' + counterId + '/call-next', { method: 'POST' });
+            if (token) {
+                currentTokenId = token.token_id;
+                currentTokenData = token;
+                showToken(token);
+            } else {
+                showEmpty();
+                alert('No waiting tokens in queue');
             }
-        );
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setLoading(btn, false);
+        }
+    }
 
+    function openCallSpecific() {
+        document.getElementById('callSpecificModal').classList.add('active');
+        document.getElementById('specificTokenNumber').value = '';
+        document.getElementById('specificTokenNumber').focus();
+    }
 
-        if (response.ok) {
+    function closeCallSpecific() {
+        document.getElementById('callSpecificModal').classList.remove('active');
+        hideMessage('callSpecificMessage');
+    }
 
-            currentTokenId = null;
+    async function callSpecificToken() {
+        const tokenNumber = parseInt(document.getElementById('specificTokenNumber').value);
+        if (!tokenNumber) {
+            showMessage('callSpecificMessage', 'Please enter a token number', true);
+            return;
+        }
+        const btn = document.querySelector('#callSpecificModal .btn-primary');
+        setLoading(btn, true);
+        hideMessage('callSpecificMessage');
+        try {
+            const token = await apiRequest('/api/counters/' + counterId + '/call-specific', {
+                method: 'POST',
+                body: JSON.stringify({ token_number: tokenNumber })
+            });
+            currentTokenId = token.token_id;
+            currentTokenData = token;
+            showToken(token);
+            closeCallSpecific();
+        } catch (err) {
+            showMessage('callSpecificMessage', err.message, true);
+        } finally {
+            setLoading(btn, false);
+        }
+    }
 
+    async function callSpecificTokenByNumber(tokenNumber) {
+        try {
+            const token = await apiRequest('/api/counters/' + counterId + '/call-specific', {
+                method: 'POST',
+                body: JSON.stringify({ token_number: tokenNumber })
+            });
+            currentTokenId = token.token_id;
+            currentTokenData = token;
+            showToken(token);
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+
+    async function serveToken() {
+        if (!currentTokenId) return;
+        const btn = document.getElementById('btnServe');
+        setLoading(btn, true);
+        try {
+            await apiRequest('/api/tokens/' + currentTokenId + '/serve', { method: 'POST' });
+            const token = await apiRequest('/api/tokens/' + currentTokenId);
+            currentTokenData = token;
+            showToken(token);
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+
+    async function completeToken() {
+        if (!currentTokenId) return;
+        const btn = document.getElementById('btnComplete');
+        setLoading(btn, true);
+        try {
+            await apiRequest('/api/tokens/' + currentTokenId + '/complete', { method: 'POST' });
+            showEmpty();
             await refresh();
-
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setLoading(btn, false);
         }
-
-        else {
-
-            const data =
-                await response.json();
-
-            alert(
-                data.error ||
-                'No-show window not elapsed yet'
-            );
-
-        }
-
     }
 
-    catch (error) {
-
-        console.error(error);
-
-        alert(
-            'Failed to mark no-show'
-        );
-
+    async function noShowToken() {
+        if (!currentTokenId) return;
+        if (!confirm('Mark this token as No Show?')) return;
+        const btn = document.getElementById('btnNoShow');
+        setLoading(btn, true);
+        try {
+            await apiRequest('/api/tokens/' + currentTokenId + '/no-show', { method: 'POST' });
+            showEmpty();
+            await refresh();
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setLoading(btn, false);
+        }
     }
 
-}
+    async function reissueToken() {
+        if (!currentTokenId) return;
+        if (!confirm('Reissue this token? It will be placed back in the waiting queue.')) return;
+        const btn = document.getElementById('btnReissue');
+        setLoading(btn, true);
+        try {
+            await apiRequest('/api/tokens/' + currentTokenId + '/reissue', { method: 'POST' });
+            showEmpty();
+            await refresh();
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setLoading(btn, false);
+        }
+    }
 
+    /* ============================================================
+       INITIALIZE
+       ============================================================ */
+    document.addEventListener('DOMContentLoaded', () => {
+        refresh();
+        refreshInterval = setInterval(refresh, 2000);
+    });
 
-/* ============================================================
-   INITIAL LOAD
-   ============================================================ */
+    // Handle Enter key in modal
+    document.getElementById('specificTokenNumber').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') callSpecificToken();
+    });
 
-refresh();
-
-
-/* ============================================================
-   AUTO REFRESH
-   ============================================================ */
-
-setInterval(
-    refresh,
-    3000
-);
-
+    // Cleanup on unload
+    window.addEventListener('beforeunload', () => {
+        if (refreshInterval) clearInterval(refreshInterval);
+    });
 </script>
-
 </body>
 </html>
