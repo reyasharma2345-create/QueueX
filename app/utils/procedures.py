@@ -31,17 +31,13 @@ def _read_token_output(cursor) -> Dict[str, Any]:
     }
 
 
+
 def _create_token_internal(
-    cursor,
+    cursor: Any,
     queue_id: int,
     customer_id: int,
 ) -> Dict[str, Any]:
-    """
-    Create a token without starting or committing a transaction.
-
-    The caller must provide a cursor belonging to the transaction
-    that should include token creation.
-    """
+    """Create a token within the caller's transaction."""
     cursor.execute(
         """
         CALL create_token_internal(
@@ -50,10 +46,7 @@ def _create_token_internal(
         """,
         (queue_id, customer_id),
     )
-
     return _read_token_output(cursor)
-
-
 def issue_token(
     queue_id: int,
     customer_id: int,

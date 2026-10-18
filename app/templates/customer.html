@@ -472,6 +472,51 @@
                     <div id="login-message" class="message"></div>
                     <button type="submit" id="login-btn">Sign In</button>
                 </form>
+                <div id="customer-register-toggle" style="margin-top: 16px; text-align: center;">
+                    <span>New to QueueX?</span>
+                    <button type="button" id="show-register-btn"
+                            style="width: auto; padding: 4px 6px; background: transparent; color: #2563eb;">
+                        Create Account
+                    </button>
+                </div>
+
+                <div id="register-panel" class="hidden">
+                    <h2 style="margin-top: 20px;">Create Customer Account</h2>
+                    <form id="register-form">
+                        <div class="field">
+                            <label for="register-full-name">Full Name</label>
+                            <input id="register-full-name" name="full_name" type="text" maxlength="100"
+                                   autocomplete="name" required placeholder="Enter your full name">
+                        </div>
+                        <div class="field">
+                            <label for="register-username">Username</label>
+                            <input id="register-username" name="username" type="text" maxlength="50"
+                                   autocomplete="username" required placeholder="Choose a username">
+                        </div>
+                        <div class="field">
+                            <label for="register-password">Password</label>
+                            <input id="register-password" name="password" type="password" minlength="8"
+                                   maxlength="128" autocomplete="new-password" required
+                                   placeholder="At least 8 characters">
+                        </div>
+                        <div class="field">
+                            <label for="register-phone">Phone (optional)</label>
+                            <input id="register-phone" name="phone" type="tel" maxlength="20"
+                                   autocomplete="tel" placeholder="Enter phone number">
+                        </div>
+                        <div class="field">
+                            <label for="register-email">Email (optional)</label>
+                            <input id="register-email" name="email" type="email" maxlength="100"
+                                   autocomplete="email" placeholder="Enter email address">
+                        </div>
+                        <div id="register-message" class="message" role="alert" aria-live="polite"></div>
+                        <button type="submit" id="register-btn">Create Account</button>
+                        <button type="button" id="show-login-btn" class="btn-secondary" style="margin-top: 10px;">
+                            Back to Sign In
+                        </button>
+                    </form>
+                </div>
+
             </div>
         </div>
 
@@ -662,13 +707,91 @@
     // ==========================================
     // LOGIN STEP
     // ==========================================
+    const registerPanel = document.getElementById('register-panel');
+    const registerToggle = document.getElementById('customer-register-toggle');
+
     document.querySelectorAll('.login-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             currentState.userType = tab.dataset.tab;
-            document.getElementById('login-btn').textContent = currentState.userType === 'customer' ? 'Sign In' : 'Sign In as Staff';
+            document.getElementById('login-btn').textContent =
+                currentState.userType === 'customer' ? 'Sign In' : 'Sign In as Staff';
+
+            registerPanel.classList.add('hidden');
+            document.getElementById('login-form').classList.remove('hidden');
+            registerToggle.classList.toggle('hidden', currentState.userType !== 'customer');
+            hideMessage('register-message');
         });
+    });
+
+    document.getElementById('show-register-btn').addEventListener('click', () => {
+        if (currentState.userType !== 'customer') return;
+        document.getElementById('login-form').classList.add('hidden');
+        registerToggle.classList.add('hidden');
+        registerPanel.classList.remove('hidden');
+        hideMessage('login-message');
+        hideMessage('register-message');
+    });
+
+    document.getElementById('show-login-btn').addEventListener('click', () => {
+        registerPanel.classList.add('hidden');
+        document.getElementById('login-form').classList.remove('hidden');
+        registerToggle.classList.toggle('hidden', currentState.userType !== 'customer');
+        hideMessage('register-message');
+    });
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (currentState.userType !== 'customer') {
+            showMessage('register-message', 'Switch to Customer to create an account.', true);
+            return;
+        }
+
+        const btn = document.getElementById('register-btn');
+        const full_name = document.getElementById('register-full-name').value.trim();
+        const username = document.getElementById('register-username').value.trim();
+        const password = document.getElementById('register-password').value;
+        const phone = document.getElementById('register-phone').value.trim();
+        const email = document.getElementById('register-email').value.trim();
+
+        setLoading(btn, true);
+        hideMessage('register-message');
+
+        try {
+            const res = await apiRequest('/api/auth/customer/register', {
+                method: 'POST',
+                body: JSON.stringify({
+                    full_name, username, password,
+                    phone: phone || null,
+                    email: email || null
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Registration failed.');
+
+            document.getElementById('register-form').reset();
+
+            if (data.requires_login || !data.account) {
+                document.getElementById('login-username').value = username;
+                registerPanel.classList.add('hidden');
+                document.getElementById('login-form').classList.remove('hidden');
+                registerToggle.classList.remove('hidden');
+                showMessage('login-message', data.message || 'Account created. Please sign in.');
+                return;
+            }
+
+            currentState.userType = 'customer';
+            currentState.user = data.account;
+            currentState.customerName = data.account.full_name || data.account.username;
+            await loadBranches();
+            showStep('step-branch');
+            updateStepDots(1);
+        } catch (err) {
+            showMessage('register-message', err.message || 'Registration failed.', true);
+        } finally {
+            setLoading(btn, false);
+        }
     });
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -1029,9 +1152,25 @@
 
     document.getElementById('logout-btn').addEventListener('click', async () => {
         stopLiveUpdates();
-        await apiRequest('/api/auth/logout', { method: 'POST' });
+        const logoutEndpoint = currentState.userType === 'customer'
+            ? '/api/auth/customer/logout'
+            : '/api/auth/logout';
+        try {
+            await apiRequest(logoutEndpoint, { method: 'POST' });
+        } catch (err) {
+            console.error('Logout request failed:', err);
+        }
         currentState = { userType: 'customer' };
         document.getElementById('login-form').reset();
+        document.getElementById('register-form').reset();
+        registerPanel.classList.add('hidden');
+        document.getElementById('login-form').classList.remove('hidden');
+        registerToggle.classList.remove('hidden');
+        document.querySelectorAll('.login-tab').forEach(t =>
+            t.classList.toggle('active', t.dataset.tab === 'customer')
+        );
+        hideMessage('login-message');
+        hideMessage('register-message');
         showStep('step-login');
         updateStepDots(0);
     });
@@ -1041,12 +1180,14 @@
     // ==========================================
     document.addEventListener('DOMContentLoaded', () => {
         // Check for existing session
-        apiRequest('/api/auth/me')
+        apiRequest('/api/auth/customer/me')
             .then(res => res.json())
             .then(data => {
                 if (data.account) {
                     currentState.user = data.account;
-                    currentState.userType = data.account.account_type || 'customer';
+                   currentState.userType = data.account.role_name === 'customer'
+    ? 'customer'
+    : 'staff';
                     currentState.customerName = data.account.full_name || data.account.username;
                     if (currentState.userType === 'customer') {
                         loadBranches();

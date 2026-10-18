@@ -19,9 +19,10 @@ def app():
     assert application.config["DB_NAME"] == "queuex_test"
     assert db._config.database == "queuex_test"
 
-    with db.get_cursor() as cursor:
-        cursor.execute("SELECT DATABASE() AS database_name")
-        result = cursor.fetchone()
+    with application.app_context():
+        with db.get_cursor() as cursor:
+            cursor.execute("SELECT DATABASE() AS database_name")
+            result = cursor.fetchone()
 
     assert result["database_name"] == "queuex_test", (
         "Tests must never run against the production database."
@@ -37,7 +38,8 @@ def required_document_seed(app):
 
     with app.app_context():
         with get_cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT d.document_id, d.name, d.is_active,
                        sd.is_required
                 FROM document d
@@ -46,7 +48,8 @@ def required_document_seed(app):
                    AND sd.service_id = 1
                 WHERE d.document_id IN (1, 2, 3)
                 ORDER BY d.document_id
-            """)
+                """
+            )
             rows = cursor.fetchall()
 
     expected = [
@@ -67,6 +70,53 @@ def required_document_seed(app):
     )
 
 
+@pytest.fixture(scope="session")
+def test_customer(app, required_document_seed):
+    """Ensure the expected customer account exists in queuex_test."""
+    from app.utils.auth import hash_password
+    from app.utils.db import get_cursor
+
+    username = "aarav"
+    password = "password123"
+
+    with app.app_context():
+        with get_cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ca.account_id
+                FROM customer_account AS ca
+                WHERE ca.username = %s
+                """,
+                (username,),
+            )
+            account = cursor.fetchone()
+
+            if account is None:
+                cursor.execute(
+                    """
+                    INSERT INTO Customer (full_name)
+                    VALUES (%s)
+                    """,
+                    ("Aarav Test",),
+                )
+                customer_id = cursor.lastrowid
+
+                cursor.execute(
+                    """
+                    INSERT INTO customer_account
+                        (customer_id, username, password_hash, is_active)
+                    VALUES (%s, %s, %s, 1)
+                    """,
+                    (
+                        customer_id,
+                        username,
+                        hash_password(password),
+                    ),
+                )
+
+    return {"username": username, "password": password}
+
+
 @pytest.fixture
-def client(app, required_document_seed):
+def client(app, required_document_seed, test_customer):
     return app.test_client()

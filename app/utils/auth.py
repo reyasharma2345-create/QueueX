@@ -1,15 +1,12 @@
 
 """Authentication and permission helpers for QueueX."""
-from functools import wraps
 
-from flask import jsonify, session
+from functools import wraps
 import hashlib
 import hmac
 
-from werkzeug.security import (
-    check_password_hash,
-    generate_password_hash,
-)
+from flask import jsonify, session
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.utils.db import execute_query, get_cursor
 
@@ -32,14 +29,8 @@ def verify_password(password: str, stored_hash: str) -> bool:
         return False
 
     if _is_legacy_sha256(stored_hash):
-        candidate = hashlib.sha256(
-            password.encode("utf-8")
-        ).hexdigest()
-
-        return hmac.compare_digest(
-            candidate.lower(),
-            stored_hash.lower(),
-        )
+        candidate = hashlib.sha256(password.encode("utf-8")).hexdigest()
+        return hmac.compare_digest(candidate.lower(), stored_hash.lower())
 
     try:
         return check_password_hash(stored_hash, password)
@@ -55,40 +46,31 @@ def hash_password(password: str) -> str:
     return generate_password_hash(password, method="scrypt")
 
 
-def authenticate_user(username: str, password: str):
-    """
-    Authenticate an active staff account.
+# ============================================================
+# STAFF AUTHENTICATION
+# ============================================================
 
-    Return a safe account dictionary on success, otherwise None.
-    Never return the stored password hash.
-    """
+def authenticate_user(username: str, password: str):
+    """Authenticate an active staff member using the existing staff table."""
     if not isinstance(username, str) or not isinstance(password, str):
         return None
 
     username = username.strip()
-
     if not username or not password:
         return None
 
     rows = execute_query(
         """
         SELECT
-            sa.account_id,
-            sa.staff_id,
-            sa.username,
-            sa.password_hash,
-            sa.is_active AS account_active,
-            sa.role_id,
-            s.full_name,
-            s.branch_id,
-            s.is_active AS staff_active,
-            r.name AS role_name
-        FROM Staff_Account sa
-        JOIN Staff s
-            ON s.staff_id = sa.staff_id
-        LEFT JOIN `Role` r
-            ON r.role_id = sa.role_id
-        WHERE sa.username = %s
+            staff_id,
+            username,
+            password_hash,
+            role,
+            full_name,
+            branch_id,
+            is_active
+        FROM staff
+        WHERE username = %s
         LIMIT 1
         """,
         (username,),
@@ -98,30 +80,28 @@ def authenticate_user(username: str, password: str):
     if not rows:
         return None
 
-    account = rows[0]
+    staff = rows[0]
 
-    # Both the account and its linked staff record must be active.
-    if account["account_active"] != 1:
+    if staff["is_active"] != 1:
         return None
 
-    if account["staff_active"] != 1:
+    role = str(staff["role"]).strip().lower()
+    if role not in ("admin", "staff"):
         return None
 
-    # Fail closed for missing or unsupported roles.
-    if account["role_name"] not in ("admin", "staff"):
+    if not verify_password(password, staff["password_hash"]):
         return None
 
-    if not verify_password(password, account["password_hash"]):
-        return None
-
+    # account_id is retained for compatibility with existing session routes.
+    # In this schema, it maps to staff_id.
     return {
-        "account_id": account["account_id"],
-        "staff_id": account["staff_id"],
-        "username": account["username"],
-        "full_name": account["full_name"],
-        "branch_id": account["branch_id"],
-        "role_id": account["role_id"],
-        "role_name": account["role_name"],
+        "account_id": staff["staff_id"],
+        "staff_id": staff["staff_id"],
+        "username": staff["username"],
+        "full_name": staff["full_name"],
+        "branch_id": staff["branch_id"],
+        "role_id": None,
+        "role_name": role,
     }
 
 
@@ -130,12 +110,7 @@ def upgrade_legacy_password_hash(
     old_hash: str,
     password: str,
 ) -> bool:
-    """
-    Conditionally upgrade a legacy hash after successful authentication.
-
-    Returns True only when the database update changed one row.
-    This function does not authenticate the user by itself.
-    """
+    """Upgrade a legacy SHA-256 hash after successful password verification."""
     if isinstance(account_id, bool) or not isinstance(account_id, int):
         return False
 
@@ -147,25 +122,23 @@ def upgrade_legacy_password_hash(
 
     new_hash = hash_password(password)
 
-    # Compare-and-update prevents overwriting a hash changed by another
-    # request after the original hash was read.
+    # Update only if the stored hash has not changed since it was read.
     with get_cursor() as cursor:
         cursor.execute(
             """
-            UPDATE Staff_Account
+            UPDATE staff
             SET password_hash = %s
-            WHERE account_id = %s
+            WHERE staff_id = %s
               AND password_hash = %s
               AND is_active = TRUE
             """,
             (new_hash, account_id, old_hash),
         )
-
         return cursor.rowcount == 1
 
 
 def get_user_permissions(account_id: int) -> set[str]:
-    """Return permissions for an active account's valid role."""
+    """Return permissions for an active staff member."""
     if isinstance(account_id, bool) or not isinstance(account_id, int):
         return set()
 
@@ -174,35 +147,75 @@ def get_user_permissions(account_id: int) -> set[str]:
 
     rows = execute_query(
         """
-        SELECT p.name
-        FROM Staff_Account sa
-        JOIN `Role` r
-            ON r.role_id = sa.role_id
-        JOIN Role_Permission rp
-            ON rp.role_id = r.role_id
-        JOIN Permission p
-            ON p.permission_id = rp.permission_id
-        JOIN Staff s
-            ON s.staff_id = sa.staff_id
-        WHERE sa.account_id = %s
-          AND sa.is_active = TRUE
-          AND s.is_active = TRUE
-          AND r.name IN ('admin', 'staff')
+        SELECT role, is_active
+        FROM staff
+        WHERE staff_id = %s
+        LIMIT 1
         """,
         (account_id,),
         fetch=True,
     )
 
+    if not rows or rows[0]["is_active"] != 1:
+        return set()
+
+    role = str(rows[0]["role"]).strip().lower()
+
+    # These are the permissions required by the current staff routes.
+    # Keep the set explicit; do not grant arbitrary permissions.
+    if role in ("admin", "staff"):
+        return {"queue_operate"}
+
+    return set()
+
+
+def get_current_session_account(account_id: int):
+    """Return the current safe staff account if it remains active."""
+    if isinstance(account_id, bool) or not isinstance(account_id, int):
+        return None
+
+    if account_id <= 0:
+        return None
+
+    rows = execute_query(
+        """
+        SELECT
+            staff_id,
+            username,
+            full_name,
+            branch_id,
+            role,
+            is_active
+        FROM staff
+        WHERE staff_id = %s
+        LIMIT 1
+        """,
+        (account_id,),
+        fetch=True,
+    )
+
+    if not rows:
+        return None
+
+    staff = rows[0]
+    role = str(staff["role"]).strip().lower()
+
+    if staff["is_active"] != 1 or role not in ("admin", "staff"):
+        return None
+
     return {
-        row["name"]
-        for row in rows
-        if isinstance(row.get("name"), str)
+        "account_id": staff["staff_id"],
+        "staff_id": staff["staff_id"],
+        "username": staff["username"],
+        "full_name": staff["full_name"],
+        "branch_id": staff["branch_id"],
+        "role_id": None,
+        "role_name": role,
     }
 
 
-
 def require_permission(permission: str):
-    """Protect a route using current database-backed account permissions."""
+    """Protect a route using permissions verified against the database."""
 
     def decorator(view_function):
         @wraps(view_function)
@@ -211,6 +224,10 @@ def require_permission(permission: str):
 
             if not isinstance(account, dict):
                 return jsonify({"error": "Authentication required"}), 401
+
+            # Do not allow customer sessions to access staff routes.
+            if account.get("role_name") not in ("admin", "staff"):
+                return jsonify({"error": "Staff authentication required"}), 401
 
             account_id = account.get("account_id")
 
@@ -227,13 +244,11 @@ def require_permission(permission: str):
                 # Fail closed if the database cannot verify authorization.
                 return jsonify({"error": "Unable to verify authorization"}), 503
 
-            if permission not in permissions:
-                session["account"] = current_account
-                session["permissions"] = sorted(permissions)
-                return jsonify({"error": "Permission denied"}), 403
-
             session["account"] = current_account
             session["permissions"] = sorted(permissions)
+
+            if permission not in permissions:
+                return jsonify({"error": "Permission denied"}), 403
 
             return view_function(*args, **kwargs)
 
@@ -242,114 +257,16 @@ def require_permission(permission: str):
     return decorator
 
 
-def require_customer_permission(permission: str):
-    """Protect a route using current database-backed customer permissions."""
-
-    def decorator(view_function):
-        @wraps(view_function)
-        def wrapped(*args, **kwargs):
-            account = session.get("account")
-
-            if not isinstance(account, dict):
-                return jsonify({"error": "Authentication required"}), 401
-
-            if account.get("role_name") != "customer":
-                return jsonify({"error": "Customer authentication required"}), 401
-
-            account_id = account.get("account_id")
-
-            try:
-                current_account = get_current_session_customer(account_id)
-
-                if current_account is None:
-                    session.clear()
-                    return jsonify({"error": "Authentication required"}), 401
-
-                permissions = get_customer_permissions(account_id)
-
-            except Exception:
-                # Fail closed if the database cannot verify authorization.
-                return jsonify({"error": "Unable to verify authorization"}), 503
-
-            if permission not in permissions:
-                session["account"] = current_account
-                session["permissions"] = sorted(permissions)
-                return jsonify({"error": "Permission denied"}), 403
-
-            session["account"] = current_account
-            session["permissions"] = sorted(permissions)
-
-            return view_function(*args, **kwargs)
-
-        return wrapped
-
-    return decorator
-
-
-def get_current_session_account(account_id: int):
-    """Return the current safe account record only if it remains active."""
-    if isinstance(account_id, bool) or not isinstance(account_id, int):
-        return None
-
-    if account_id <= 0:
-        return None
-
-    rows = execute_query(
-        """
-        SELECT
-            sa.account_id,
-            sa.staff_id,
-            sa.username,
-            sa.is_active AS account_active,
-            sa.role_id,
-            s.full_name,
-            s.branch_id,
-            s.is_active AS staff_active,
-            r.name AS role_name
-        FROM Staff_Account sa
-        JOIN Staff s ON s.staff_id = sa.staff_id
-        JOIN `Role` r ON r.role_id = sa.role_id
-        WHERE sa.account_id = %s
-        LIMIT 1
-        """,
-        (account_id,),
-        fetch=True,
-    )
-
-    if not rows:
-        return None
-
-    account = rows[0]
-
-    if account["account_active"] != 1 or account["staff_active"] != 1:
-        return None
-
-    if account["role_name"] not in ("admin", "staff"):
-        return None
-
-    return {
-        "account_id": account["account_id"],
-        "staff_id": account["staff_id"],
-        "username": account["username"],
-        "full_name": account["full_name"],
-        "branch_id": account["branch_id"],
-        "role_id": account["role_id"],
-        "role_name": account["role_name"],
-    }
-
+# ============================================================
+# CUSTOMER AUTHENTICATION
+# ============================================================
 
 def authenticate_customer(username: str, password: str):
-    """
-    Authenticate an active customer account.
-
-    Return a safe account dictionary on success, otherwise None.
-    Never return the stored password hash.
-    """
+    """Authenticate an active customer account without exposing its hash."""
     if not isinstance(username, str) or not isinstance(password, str):
         return None
 
     username = username.strip()
-
     if not username or not password:
         return None
 
@@ -393,14 +310,27 @@ def authenticate_customer(username: str, password: str):
 
 
 def get_customer_permissions(account_id: int) -> set[str]:
-    """Return permissions for an active customer account."""
+    """Return basic permissions only for an active customer account."""
     if isinstance(account_id, bool) or not isinstance(account_id, int):
         return set()
 
     if account_id <= 0:
         return set()
 
-    # Customers get basic permissions
+    rows = execute_query(
+        """
+        SELECT is_active
+        FROM customer_account
+        WHERE account_id = %s
+        LIMIT 1
+        """,
+        (account_id,),
+        fetch=True,
+    )
+
+    if not rows or rows[0]["is_active"] != 1:
+        return set()
+
     return {
         "customer:read",
         "customer:manage_own",
@@ -408,7 +338,7 @@ def get_customer_permissions(account_id: int) -> set[str]:
 
 
 def get_current_session_customer(account_id: int):
-    """Return the current safe customer account record only if it remains active."""
+    """Return the current safe customer record if the account remains active."""
     if isinstance(account_id, bool) or not isinstance(account_id, int):
         return None
 
@@ -424,7 +354,8 @@ def get_current_session_customer(account_id: int):
             ca.is_active AS account_active,
             c.full_name
         FROM customer_account ca
-        JOIN Customer c ON c.customer_id = ca.customer_id
+        JOIN Customer c
+            ON c.customer_id = ca.customer_id
         WHERE ca.account_id = %s
         LIMIT 1
         """,
@@ -447,3 +378,47 @@ def get_current_session_customer(account_id: int):
         "full_name": account["full_name"],
         "role_name": "customer",
     }
+
+
+def require_customer_permission(permission: str):
+    """Protect a route using verified customer permissions."""
+
+    def decorator(view_function):
+        @wraps(view_function)
+        def wrapped(*args, **kwargs):
+            account = session.get("account")
+
+            if not isinstance(account, dict):
+                return jsonify({"error": "Authentication required"}), 401
+
+            if account.get("role_name") != "customer":
+                return jsonify(
+                    {"error": "Customer authentication required"}
+                ), 401
+
+            account_id = account.get("account_id")
+
+            try:
+                current_account = get_current_session_customer(account_id)
+
+                if current_account is None:
+                    session.clear()
+                    return jsonify({"error": "Authentication required"}), 401
+
+                permissions = get_customer_permissions(account_id)
+
+            except Exception:
+                # Fail closed if the database cannot verify authorization.
+                return jsonify({"error": "Unable to verify authorization"}), 503
+
+            session["account"] = current_account
+            session["permissions"] = sorted(permissions)
+
+            if permission not in permissions:
+                return jsonify({"error": "Permission denied"}), 403
+
+            return view_function(*args, **kwargs)
+
+        return wrapped
+
+    return decorator

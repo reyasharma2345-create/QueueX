@@ -14,7 +14,7 @@ from flask import (
 )
 from app.utils.auth import require_permission, require_customer_permission
 import re
-
+from functools import wraps
 from app.utils.procedures import (
     issue_token,
     call_next_token,
@@ -33,6 +33,41 @@ from app.utils.procedures import (
 
 
 from app.utils.db import execute_query, get_cursor
+
+def require_own_customer_request(view_function):
+    """Ensure the authenticated customer owns the requested record."""
+    @wraps(view_function)
+    def wrapped(request_id, *args, **kwargs):
+        account = session.get("account") or {}
+        customer_id = account.get("customer_id")
+
+        try:
+            rows = execute_query(
+                """
+                SELECT request_id
+                FROM customer_request
+                WHERE request_id = %s
+                  AND customer_id = %s
+                LIMIT 1
+                """,
+                (request_id, customer_id),
+                fetch=True,
+            )
+        except Exception:
+            current_app.logger.exception(
+                "Unable to verify customer request ownership"
+            )
+            return _safe_error(
+                "Unable to verify request ownership",
+                500,
+            )
+
+        if not rows:
+            return _safe_error("Request not found", 404)
+
+        return view_function(request_id, *args, **kwargs)
+
+    return wrapped
 
 
 # ============================================================
@@ -91,17 +126,19 @@ def _validate_customer_input(full_name, phone, email):
 
 @api_bp.route('/branches', methods=['GET'])
 def get_branches():
-    """Get all active branches."""
+    """Return active branches for the customer workflow."""
     try:
         branches = execute_query(
-            """SELECT branch_id, name, address, phone, is_active
-               FROM Branch
-               WHERE is_active = TRUE
-               ORDER BY name"""
-        )
-        return jsonify(branches), 200
+    """
+    SELECT branch_id, name, address, phone
+    FROM Branch
+    ORDER BY name
+    """,
+    fetch=True,
+)
+        return jsonify(branches or []), 200
     except Exception:
-        current_app.logger.exception('Unable to fetch branches')
+        current_app.logger.exception('GET /api/branches failed')
         return _safe_error('Unable to fetch branches', 500)
 
 
@@ -109,22 +146,23 @@ def get_branches():
 # SERVICES
 # ============================================================
 
+
 @api_bp.route('/services', methods=['GET'])
 def get_services():
-    """Get all active services."""
+    """Return active services for the customer workflow."""
     try:
         services = execute_query(
-            """SELECT service_id, name, description, estimated_duration_minutes, is_active
-               FROM Service
-               WHERE is_active = TRUE
-               ORDER BY name"""
+            """
+            SELECT service_id, name, description, estimated_duration_minutes
+            FROM Service
+            ORDER BY name
+            """,
+            fetch=True,
         )
-        return jsonify(services), 200
+        return jsonify(services or []), 200
     except Exception:
-        current_app.logger.exception('Unable to fetch services')
+        current_app.logger.exception('GET /api/services failed')
         return _safe_error('Unable to fetch services', 500)
-
-
 @api_bp.route('/services/<int:service_id>/documents', methods=['GET'])
 def get_service_documents(service_id: int):
     """Get documents required for a specific service."""
@@ -1043,28 +1081,6 @@ def list_staff():
     return jsonify(rows)
 
 
-@api_bp.route('/branches', methods=['GET'])
-def list_branches():
-    """List all branches."""
-
-    rows = execute_query(
-        "SELECT * FROM Branch ORDER BY name"
-    )
-
-    return jsonify(rows)
-
-
-@api_bp.route('/services', methods=['GET'])
-def list_services():
-    """List all services."""
-
-    rows = execute_query(
-        "SELECT * FROM Service ORDER BY name"
-    )
-
-    return jsonify(rows)
-
-
 # ============================================================
 # CUSTOMER APIs
 # ============================================================
@@ -1566,40 +1582,38 @@ def get_token_status_endpoint(token_id: int):
 # CUSTOMER REQUEST APIs
 # ============================================================
 
-@api_bp.route(
-    '/customer-requests',
-    methods=['POST']
-)
+
+@api_bp.route('/customer-requests', methods=['POST'])
 @require_customer_permission("customer:manage_own")
 def create_customer_request_api():
-    """Create a draft request for an existing customer."""
-
+    """Create a draft request for the authenticated customer."""
     data = request.get_json(silent=True) or {}
 
+    # Derive customer identity from the verified session, not client input.
+    account = session.get("account") or {}
+    customer_id = account.get("customer_id")
+
     try:
-        customer_id = int(data.get('customer_id'))
-        queue_id = int(data.get('queue_id'))
+        customer_id = int(customer_id)
+        queue_id = int(data.get("queue_id"))
 
         if customer_id <= 0 or queue_id <= 0:
             raise ValueError
-
     except (TypeError, ValueError):
-        return _safe_error(
-            'Valid customer_id and queue_id are required'
-        )
+        return _safe_error("A valid queue_id is required")
 
     try:
         request_id = create_customer_request(
             customer_id=customer_id,
-            queue_id=queue_id
+            queue_id=queue_id,
         )
 
         return jsonify({
-            'request_id': request_id,
-            'customer_id': customer_id,
-            'queue_id': queue_id,
-            'request_status': 'draft',
-            'message': 'Customer request created successfully'
+            "request_id": request_id,
+            "customer_id": customer_id,
+            "queue_id": queue_id,
+            "request_status": "draft",
+            "message": "Customer request created successfully",
         }), 201
 
     except ValueError as error:
@@ -1607,11 +1621,11 @@ def create_customer_request_api():
 
     except Exception:
         current_app.logger.exception(
-            'Unable to create customer request'
+            "Unable to create customer request"
         )
         return _safe_error(
-            'Unable to create customer request',
-            500
+            "Unable to create customer request",
+            500,
         )
 
 
@@ -1620,6 +1634,7 @@ def create_customer_request_api():
     methods=['GET']
 )
 @require_customer_permission("customer:read")
+@require_own_customer_request
 def get_customer_request_api(request_id):
     """Return request details and configured document statuses."""
 
@@ -1695,6 +1710,7 @@ def get_customer_request_api(request_id):
     methods=['PATCH']
 )
 @require_customer_permission("customer:manage_own")
+@require_own_customer_request
 def update_customer_request_document_api(request_id):
     """Update the readiness status of a request document."""
 
@@ -1747,6 +1763,7 @@ def update_customer_request_document_api(request_id):
     methods=['POST']
 )
 @require_customer_permission("customer:manage_own")
+@require_own_customer_request
 def confirm_customer_request_readiness_api(request_id):
     """Confirm that all required documents are available."""
     try:
@@ -1776,6 +1793,7 @@ def confirm_customer_request_readiness_api(request_id):
     methods=['POST']
 )
 @require_customer_permission("customer:manage_own")
+@require_own_customer_request
 def queue_customer_request_api(request_id):
     """Issue a token for a ready customer request."""
     try:
@@ -1805,7 +1823,7 @@ def get_display_branch():
     # For now, use the first active branch. In production, this would be
     # determined by the display device configuration.
     branch = execute_query(
-        """SELECT branch_id, name FROM Branch WHERE is_active = TRUE ORDER BY branch_id LIMIT 1""",
+       """SELECT branch_id, name FROM Branch ORDER BY branch_id LIMIT 1""",
         fetch=True
     )
     
@@ -1820,7 +1838,7 @@ def get_display_branch():
         """SELECT q.queue_id, q.name, q.service_id, s.name AS service_name, q.branch_id
            FROM Queue q
            JOIN Service s ON q.service_id = s.service_id
-           WHERE q.branch_id = %s AND q.is_active = TRUE AND s.is_active = TRUE
+           WHERE q.branch_id = %s AND q.is_active = TRUE
            ORDER BY q.queue_id""",
         (branch_id,),
         fetch=True
@@ -1873,7 +1891,7 @@ def get_display_branch():
 def get_display_branch_by_id(branch_id: int):
     """Get display data for a specific branch."""
     branch = execute_query(
-        """SELECT branch_id, name FROM Branch WHERE branch_id = %s AND is_active = TRUE""",
+        """SELECT branch_id, name FROM Branch WHERE branch_id = %s""",
         (branch_id,),
         fetch=True
     )
@@ -1888,7 +1906,7 @@ def get_display_branch_by_id(branch_id: int):
         """SELECT q.queue_id, q.name, q.service_id, s.name AS service_name
            FROM Queue q
            JOIN Service s ON q.service_id = s.service_id
-           WHERE q.branch_id = %s AND q.is_active = TRUE AND s.is_active = TRUE
+           WHERE q.branch_id = %s AND q.is_active = TRUE
            ORDER BY q.queue_id""",
         (branch_id,),
         fetch=True
