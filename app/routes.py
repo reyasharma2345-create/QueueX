@@ -1,4 +1,4 @@
-﻿"""
+"""
 QueueX Route Blueprints
 
 API and Web route definitions.
@@ -297,13 +297,22 @@ def _validate_staff_for_counter(staff_id, counter_id):
     return row
 
 
-def _validate_token_staff(token_id):
+def _validate_token_staff(token_id, current_staff_id):
     """
-    Validate that a token exists and is assigned to
-    an active staff member.
+    Validate that the token is assigned to the currently
+    authenticated, active staff member at an active counter
+    in the same branch.
 
     Returns token/staff information or None.
     """
+    try:
+        token_id = int(token_id)
+        current_staff_id = int(current_staff_id)
+    except (TypeError, ValueError):
+        return None
+
+    if token_id <= 0 or current_staff_id <= 0:
+        return None
 
     token = execute_query(
         """
@@ -316,26 +325,22 @@ def _validate_token_staff(token_id):
             s.full_name AS staff_name,
             s.is_active AS staff_active
         FROM Token t
-        LEFT JOIN Staff s
+        JOIN Staff s
             ON t.staff_id = s.staff_id
+        JOIN Counter c
+            ON t.counter_id = c.counter_id
         WHERE t.token_id = %s
+          AND t.staff_id = %s
+          AND s.is_active = TRUE
+          AND c.is_active = TRUE
+          AND c.branch_id = s.branch_id
+          AND c.queue_id = t.queue_id
         """,
-        (token_id,),
-        fetch=True
+        (token_id, current_staff_id),
+        fetch=True,
     )
 
-    if not token:
-        return None
-
-    row = token[0]
-
-    if not row['staff_id']:
-        return None
-
-    if row['staff_active'] != 1:
-        return None
-
-    return row
+    return token[0] if token else None
 
 
 # ============================================================
@@ -863,7 +868,17 @@ def complete_token_endpoint(token_id: int):
     """Mark a token as completed."""
 
     # Verify token has an active assigned staff member
-    token = _validate_token_staff(token_id)
+    account = session.get("account", {})
+    staff_id = (
+        account.get("staff_id")
+        if isinstance(account, dict)
+        else None
+    )
+
+    if not staff_id:
+        return _safe_error("Authentication required", 401)
+
+    token = _validate_token_staff(token_id, staff_id)
 
     if not token:
         return _safe_error(
@@ -909,7 +924,17 @@ def serve_token_endpoint(token_id: int):
     """Mark a called token as serving."""
 
     # Verify token has an active assigned staff member
-    token = _validate_token_staff(token_id)
+    account = session.get("account", {})
+    staff_id = (
+        account.get("staff_id")
+        if isinstance(account, dict)
+        else None
+    )
+
+    if not staff_id:
+        return _safe_error("Authentication required", 401)
+
+    token = _validate_token_staff(token_id, staff_id)
 
     if not token:
         return _safe_error(
@@ -955,7 +980,17 @@ def no_show_token(token_id: int):
     """Mark a called token as no-show."""
 
     # Verify token has an active assigned staff member
-    token = _validate_token_staff(token_id)
+    account = session.get("account", {})
+    staff_id = (
+        account.get("staff_id")
+        if isinstance(account, dict)
+        else None
+    )
+
+    if not staff_id:
+        return _safe_error("Authentication required", 401)
+
+    token = _validate_token_staff(token_id, staff_id)
 
     if not token:
         return _safe_error(
@@ -1544,7 +1579,17 @@ def call_specific_token_endpoint(counter_id: int):
 def reissue_token_endpoint(token_id: int):
     """Reissue a token - put it back in waiting queue."""
     # Verify token has an active assigned staff member
-    token = _validate_token_staff(token_id)
+    account = session.get("account", {})
+    staff_id = (
+        account.get("staff_id")
+        if isinstance(account, dict)
+        else None
+    )
+
+    if not staff_id:
+        return _safe_error("Authentication required", 401)
+
+    token = _validate_token_staff(token_id, staff_id)
     
     if not token:
         return _safe_error('Token is not assigned to an active staff member', 403)
