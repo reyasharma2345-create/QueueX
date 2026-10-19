@@ -324,3 +324,131 @@ def test_document_update_rejects_invalid_service_document(
         )
     finally:
         _delete_customer_request(app, request_id)
+
+def test_customer_cannot_access_another_customers_request(client, app):
+    """A customer cannot read or modify another customer's request."""
+    from app.utils.auth import hash_password
+    from app.utils.db import get_cursor
+
+    request_id = None
+    second_username = "ownership_test_customer_b"
+    second_password = "ownership_test_password_123"
+
+    try:
+        # Create a request as customer A.
+        _login_customer(client, username="aarav")
+
+        created = client.post(
+            "/api/customer-requests",
+            json={"queue_id": 1},
+        )
+        assert created.status_code == 201, created.get_json()
+        request_id = created.get_json()["request_id"]
+
+        # Create a separate customer B in the isolated test database.
+        with app.app_context():
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT account_id
+                    FROM customer_account
+                    WHERE username = %s
+                    """,
+                    (second_username,),
+                )
+                existing = cursor.fetchone()
+
+                if existing is None:
+                    cursor.execute(
+                        """
+                        INSERT INTO Customer (full_name)
+                        VALUES (%s)
+                        """,
+                        ("Ownership Test Customer B",),
+                    )
+                    customer_id = cursor.lastrowid
+
+                    cursor.execute(
+                        """
+                        INSERT INTO customer_account
+                            (customer_id, username, password_hash, is_active)
+                        VALUES (%s, %s, %s, 1)
+                        """,
+                        (
+                            customer_id,
+                            second_username,
+                            hash_password(second_password),
+                        ),
+                    )
+
+        # Authenticate as customer B using the real login endpoint.
+        login_b = client.post(
+            "/api/auth/customer/login",
+            json={
+                "username": second_username,
+                "password": second_password,
+            },
+        )
+        assert login_b.status_code == 200, login_b.get_json()
+
+        # B must not be able to read A's request.
+        response = client.get(
+            f"/api/customer-requests/{request_id}"
+        )
+        assert response.status_code == 404, response.get_json()
+
+        # B must not be able to update A's document status.
+        response = client.patch(
+            f"/api/customer-requests/{request_id}/documents",
+            json={
+                "document_id": 1,
+                "readiness_status": "available",
+            },
+        )
+        assert response.status_code == 404, response.get_json()
+
+        # B must not be able to confirm A's readiness.
+        response = client.post(
+            f"/api/customer-requests/{request_id}/confirm-readiness"
+        )
+        assert response.status_code == 404, response.get_json()
+
+        # B must not be able to queue A's request.
+        response = client.post(
+            f"/api/customer-requests/{request_id}/queue"
+        )
+        assert response.status_code == 404, response.get_json()
+
+        # Verify A's request still exists and remains unchanged.
+        with app.app_context():
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT customer_id, request_status, token_id,
+                           readiness_confirmed
+                    FROM customer_request
+                    WHERE request_id = %s
+                    """,
+                    (request_id,),
+                )
+                request_row = cursor.fetchone()
+
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) AS total
+                    FROM request_document
+                    WHERE request_id = %s
+                      AND readiness_status <> 'pending'
+                    """,
+                    (request_id,),
+                )
+                changed_documents = cursor.fetchone()["total"]
+
+        assert request_row is not None
+        assert request_row["request_status"] == "draft"
+        assert request_row["token_id"] is None
+        assert not request_row["readiness_confirmed"]
+        assert changed_documents == 0
+
+    finally:
+        _delete_customer_request(app, request_id)
