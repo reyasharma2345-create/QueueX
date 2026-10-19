@@ -11,14 +11,16 @@ def test_queue_request_rolls_back_token_if_linking_fails(
             "/api/auth/customer/login",
             json={"username": username, "password": password},
         )
-        assert response.status_code == 200
+        assert response.status_code == 200, response.get_json()
         return response.get_json()
 
     request_id = None
     token_ids_before = set()
+    history_ids_before = set()
+    notification_ids_before = set()
 
     try:
-        # 1. Create a customer request.
+        # 1. Log in and create a test customer request.
         _login_customer(client)
         created = client.post(
             "/api/customer-requests",
@@ -33,7 +35,7 @@ def test_queue_request_rolls_back_token_if_linking_fails(
         )
         assert details.status_code == 200, details.get_json()
 
-        # 3. Mark all listed documents as available.
+        # 3. Mark all required documents as available.
         for document in details.get_json()["documents"]:
             response = client.patch(
                 f"/api/customer-requests/{request_id}/documents",
@@ -50,7 +52,9 @@ def test_queue_request_rolls_back_token_if_linking_fails(
         )
         assert confirmed.status_code == 200, confirmed.get_json()
 
-        # 5. Record the existing tokens and queue counter.
+        # 5. Snapshot existing records and the queue counter.
+        # The snapshots let us verify the failed operation leaves
+        # no additional tokens, history entries, or notifications.
         with app.app_context():
             with get_cursor() as cursor:
                 cursor.execute("SELECT token_id FROM `Token`")
@@ -58,8 +62,24 @@ def test_queue_request_rolls_back_token_if_linking_fails(
                     row["token_id"] for row in cursor.fetchall()
                 }
 
+                cursor.execute("SELECT history_id FROM queue_history")
+                history_ids_before = {
+                    row["history_id"] for row in cursor.fetchall()
+                }
+
                 cursor.execute(
-                    "SELECT last_token_number FROM Queue WHERE queue_id = %s",
+                    "SELECT notification_id FROM notification"
+                )
+                notification_ids_before = {
+                    row["notification_id"] for row in cursor.fetchall()
+                }
+
+                cursor.execute(
+                    """
+                    SELECT last_token_number
+                    FROM Queue
+                    WHERE queue_id = %s
+                    """,
                     (1,),
                 )
                 queue_before = cursor.fetchone()
@@ -83,15 +103,16 @@ def test_queue_request_rolls_back_token_if_linking_fails(
         # The simulated failure must be reported as an error.
         assert response.status_code >= 400, response.get_json()
 
-        # Restore the real helper before inspecting the database.
+        # Restore the original helper before inspecting the database.
         monkeypatch.undo()
 
-        # 7. Verify the request and token creation were rolled back.
+        # 7. Verify the request, token, queue counter, history,
+        # and notification records were rolled back.
         with app.app_context():
             with get_cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT token_id, request_status
+                    SELECT token_id, request_status, readiness_confirmed
                     FROM customer_request
                     WHERE request_id = %s
                     """,
@@ -102,12 +123,27 @@ def test_queue_request_rolls_back_token_if_linking_fails(
                 assert request is not None
                 assert request["token_id"] is None
                 assert request["request_status"] == "ready"
+                assert request["readiness_confirmed"] in (1, True)
 
                 cursor.execute("SELECT token_id FROM `Token`")
                 token_ids_after = {
                     row["token_id"] for row in cursor.fetchall()
                 }
                 assert token_ids_after == token_ids_before
+
+                cursor.execute("SELECT history_id FROM queue_history")
+                history_ids_after = {
+                    row["history_id"] for row in cursor.fetchall()
+                }
+                assert history_ids_after == history_ids_before
+
+                cursor.execute(
+                    "SELECT notification_id FROM notification"
+                )
+                notification_ids_after = {
+                    row["notification_id"] for row in cursor.fetchall()
+                }
+                assert notification_ids_after == notification_ids_before
 
                 cursor.execute(
                     """
@@ -121,16 +157,15 @@ def test_queue_request_rolls_back_token_if_linking_fails(
 
                 assert queue_after is not None
                 assert (
-                    queue_after["last_token_number"]
-                    == last_token_before
+                    queue_after["last_token_number"] == last_token_before
                 )
 
     finally:
         # Restore patches even if an assertion fails.
         monkeypatch.undo()
 
-        # Remove only the test request; do not reset queue counters
-        # or delete pre-existing tokens.
+        # Remove only this test's request and its document rows.
+        # Do not reset queue counters or delete pre-existing tokens.
         if request_id is not None:
             with app.app_context():
                 with get_cursor() as cursor:
