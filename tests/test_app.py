@@ -210,6 +210,81 @@ def test_readiness_confirmed_when_all_required_documents_are_available(
     finally:
         _delete_customer_request(app, request_id)
 
+def test_document_readiness_cannot_change_after_confirmation(client, app):
+    request_id = None
+
+    try:
+        _login_customer(client)
+
+        # Create a new draft request.
+        created = client.post(
+            "/api/customer-requests",
+            json={"queue_id": 1},
+        )
+        assert created.status_code == 201, created.get_json()
+        request_id = created.get_json()["request_id"]
+
+        # Retrieve the documents required for this request.
+        details = client.get(
+            f"/api/customer-requests/{request_id}"
+        )
+        assert details.status_code == 200, details.get_json()
+
+        documents = details.get_json()["documents"]
+        assert len(documents) == 3
+
+        # Mark all required documents as available.
+        for document in documents:
+            updated = client.patch(
+                f"/api/customer-requests/{request_id}/documents",
+                json={
+                    "document_id": document["document_id"],
+                    "readiness_status": "available",
+                },
+            )
+            assert updated.status_code == 200, updated.get_json()
+
+        # Confirm readiness.
+        confirmed = client.post(
+            f"/api/customer-requests/{request_id}/confirm-readiness"
+        )
+        assert confirmed.status_code == 200, confirmed.get_json()
+        assert confirmed.get_json()["request_status"] == "ready"
+        assert confirmed.get_json()["readiness_confirmed"] is True
+
+        # Changing a document after confirmation must be rejected.
+        response = client.patch(
+            f"/api/customer-requests/{request_id}/documents",
+            json={
+                "document_id": documents[0]["document_id"],
+                "readiness_status": "missing",
+            },
+        )
+
+        assert response.status_code == 400, response.get_json()
+        assert "draft" in response.get_json()["error"].lower()
+
+        # Verify the request remains ready.
+        details_after = client.get(
+            f"/api/customer-requests/{request_id}"
+        )
+        assert details_after.status_code == 200, details_after.get_json()
+
+        request = details_after.get_json()["request"]
+        assert request["request_status"] == "ready"
+        assert request["readiness_confirmed"] in (1, True)
+
+        # Verify the document status was not changed.
+        document_after = next(
+            document
+            for document in details_after.get_json()["documents"]
+            if document["document_id"] == documents[0]["document_id"]
+        )
+        assert document_after["readiness_status"] == "available"
+
+    finally:
+        _delete_customer_request(app, request_id)
+
 
 def test_queueing_request_twice_reuses_existing_token(client, app):
     request_id = None

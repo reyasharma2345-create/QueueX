@@ -399,10 +399,10 @@ def update_request_document_status(
         try:
             cursor.execute(
                 """
-                SELECT rd.request_id
-                FROM request_document rd
-                JOIN customer_request cr
-                    ON cr.request_id = rd.request_id
+                SELECT cr.request_status
+                FROM customer_request cr
+                JOIN request_document rd
+                    ON rd.request_id = cr.request_id
                 JOIN Queue q
                     ON q.queue_id = cr.queue_id
                 JOIN service_document sd
@@ -413,15 +413,23 @@ def update_request_document_status(
                 WHERE rd.request_id = %s
                   AND rd.document_id = %s
                   AND d.is_active = 1
+                FOR UPDATE
                 """,
                 (request_id, document_id),
             )
 
-            if not cursor.fetchone():
+            request_document = cursor.fetchone()
+
+            if not request_document:
                 raise ValueError(
                     "Document is not valid for this request"
                 )
 
+            if request_document["request_status"] != "draft":
+                raise ValueError(
+                    "Document readiness can only be changed while "
+                    "the request is in draft status"
+                )
             cursor.execute(
                 """
                 UPDATE request_document
