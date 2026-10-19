@@ -1607,22 +1607,6 @@ def reissue_token_endpoint(token_id: int):
         current_app.logger.exception('Unable to reissue token')
         return _safe_error('Unable to reissue token')
 
-
-# ============================================================
-# GET TOKEN STATUS
-# ============================================================
-
-@api_bp.route('/tokens/<int:token_id>', methods=['GET'])
-def get_token_status_endpoint(token_id: int):
-    """Get token status."""
-    token = get_token_status(token_id)
-    
-    if not token:
-        return _safe_error('Token not found', 404)
-        
-    return jsonify(token)
-
-
 # ============================================================
 # CUSTOMER REQUEST APIs
 # ============================================================
