@@ -1,11 +1,46 @@
-﻿
-import os
 
+import os
+from flask.testing import FlaskClient
+from werkzeug.datastructures import Headers
 # Force the isolated test database before importing the application.
 os.environ["DB_NAME"] = "queuex_test"
 os.environ["TEST_DB_NAME"] = "queuex_test"
 
 import pytest
+
+class CSRFTestClient(FlaskClient):
+    """Test client that adds CSRF tokens to unsafe requests by default."""
+
+    auto_csrf = True
+
+    def open(self, *args, **kwargs):
+        method = (kwargs.get("method") or "GET").upper()
+
+        if self.auto_csrf and method not in (
+            "GET", "HEAD", "OPTIONS", "TRACE"
+        ):
+            headers = Headers(kwargs.get("headers"))
+
+            if not headers.get("X-CSRFToken"):
+                token_response = super().open(
+                    "/api/csrf-token",
+                    method="GET",
+                )
+
+                if token_response.status_code != 200:
+                    return token_response
+
+                token_data = token_response.get_json()
+
+                if not token_data or "csrf_token" not in token_data:
+                    raise RuntimeError(
+                        "CSRF token endpoint did not return a token."
+                    )
+
+                headers["X-CSRFToken"] = token_data["csrf_token"]
+                kwargs["headers"] = headers
+
+        return super().open(*args, **kwargs)
 
 
 @pytest.fixture(scope="session")
@@ -14,7 +49,7 @@ def app():
     from app.utils import db
 
     application = create_app("testing")
-
+    application.test_client_class = CSRFTestClient
     # Safety checks: never run these tests against production.
     assert application.config["DB_NAME"] == "queuex_test"
     assert db._config.database == "queuex_test"
@@ -118,5 +153,14 @@ def test_customer(app, required_document_seed):
 
 
 @pytest.fixture
+def raw_client(app):
+    """Create a test client without automatic CSRF tokens."""
+    client = app.test_client()
+    client.auto_csrf = False
+    return client
+
+
+@pytest.fixture
 def client(app, required_document_seed, test_customer):
+    """Create a CSRF-aware test client."""
     return app.test_client()

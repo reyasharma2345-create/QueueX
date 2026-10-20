@@ -131,13 +131,43 @@
        ============================================================ */
     async function apiRequest(url, options = {}) {
         try {
+            const method = (options.method || 'GET').toUpperCase();
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            // Fetch a fresh token for each state-changing request. This also
+            // handles session changes after login/logout.
+            if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
+                const tokenResponse = await fetch('/api/csrf-token', {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                });
+
+                if (!tokenResponse.ok) {
+                    throw new Error('Unable to obtain CSRF token.');
+                }
+
+                const tokenData = await tokenResponse.json();
+
+                if (!tokenData || !tokenData.csrf_token) {
+                    throw new Error('CSRF token was not returned by the server.');
+                }
+
+                headers['X-CSRFToken'] = tokenData.csrf_token;
+            }
+
             const res = await fetch(url, {
-                headers: { 'Content-Type': 'application/json', ...options.headers },
-                credentials: 'same-origin',
-                ...options
+                ...options,
+                method,
+                headers,
+                credentials: 'same-origin'
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Request failed');
+            updateConnectionStatus(true);
             return data;
         } catch (err) {
             updateConnectionStatus(false);

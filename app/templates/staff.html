@@ -129,11 +129,37 @@
         });
     }
 
-    function apiRequest(url, options = {}) {
+    async function apiRequest(url, options = {}) {
+        const method = (options.method || 'GET').toUpperCase();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+
+        if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
+            const tokenResponse = await fetch('/api/csrf-token', {
+                method: 'GET',
+                credentials: 'same-origin'
+            });
+
+            if (!tokenResponse.ok) {
+                throw new Error('Unable to obtain CSRF token.');
+            }
+
+            const tokenData = await tokenResponse.json();
+
+            if (!tokenData || !tokenData.csrf_token) {
+                throw new Error('CSRF token endpoint did not return a token.');
+            }
+
+            headers['X-CSRFToken'] = tokenData.csrf_token;
+        }
+
         return fetch(url, {
-            headers: { 'Content-Type': 'application/json', ...options.headers },
-            credentials: 'same-origin',
-            ...options
+            ...options,
+            method,
+            headers,
+            credentials: 'same-origin'
         });
     }
 

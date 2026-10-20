@@ -61,6 +61,9 @@ class ProductionConfig(Config):
     """Production configuration."""
 
     DEBUG = False
+    SESSION_COOKIE_SECURE = (
+        os.getenv("SESSION_COOKIE_SECURE", "1").strip() == "1"
+    )
 
 
 class TestingConfig(Config):

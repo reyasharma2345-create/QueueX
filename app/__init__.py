@@ -1,7 +1,8 @@
 
 """QueueX Flask application factory."""
 
-from flask import Flask
+from flask import Flask, jsonify
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 
 from config import get_config
 
@@ -14,6 +15,10 @@ def create_app(config_name: str = None) -> Flask:
     # Load configuration
     config = get_config(config_name)
     app.config.from_object(config)
+
+    # Enable CSRF protection for state-changing requests.
+    csrf = CSRFProtect()
+    csrf.init_app(app)
 
     # Initialize database and check connectivity
     from app.utils.db import test_connection
@@ -37,6 +42,17 @@ def create_app(config_name: str = None) -> Flask:
     def health():
         return {"status": "ok", "service": "queuex"}
 
+    # Provide a CSRF token to browser clients.
+    @app.route("/api/csrf-token", methods=["GET"])
+    def csrf_token():
+        return jsonify({"csrf_token": generate_csrf()})
+
+    # Return a consistent response for CSRF validation failures.
+    @app.errorhandler(400)
+    def bad_request(error):
+        description = getattr(error, "description", "Bad request")
+        return jsonify({"error": description}), 400
+
     # Error handlers
     @app.errorhandler(404)
     def not_found(error):
@@ -52,4 +68,8 @@ def create_app(config_name: str = None) -> Flask:
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(host="0.0.0.0", port=5000, debug=app.config["DEBUG"])
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=app.config["DEBUG"],
+    )
