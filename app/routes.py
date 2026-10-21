@@ -454,29 +454,31 @@ def get_queue(queue_id: int):
     )
 
     tokens = execute_query(
-        """
-        SELECT
-            t.token_number,
-            t.status,
-            t.called_at,
-            c.full_name AS customer_name,
-            t.counter_id,
-            t.token_id
-
-        FROM Token t
-
-        JOIN Customer c
-            ON t.customer_id = c.customer_id
-
-        WHERE t.queue_id = %s
-          AND t.status IN ('waiting', 'called', 'serving')
-
-        ORDER BY t.token_number
-
-        LIMIT 20
-        """,
-        (queue_id,)
-    )
+    """
+    SELECT
+        t.token_number,
+        t.status,
+        t.called_at,
+        c.full_name AS customer_name,
+        t.counter_id,
+        t.token_id,
+        t.queue_id,
+        q.name AS queue_name,
+        s.name AS service_name
+    FROM Token t
+    JOIN Customer c
+        ON t.customer_id = c.customer_id
+    JOIN Queue q
+        ON t.queue_id = q.queue_id
+    JOIN Service s
+        ON q.service_id = s.service_id
+    WHERE t.queue_id = %s
+      AND t.status IN ('waiting', 'called', 'serving')
+    ORDER BY t.token_number
+    LIMIT 20
+    """,
+    (queue_id,)
+)
 
     q['tokens'] = tokens
 
@@ -635,17 +637,78 @@ def create_customer_token():
 
 @api_bp.route('/tokens/<int:token_id>', methods=['GET'])
 def get_token(token_id: int):
-    """Get token status and details."""
+    """Return token details only to its owner or authorized staff."""
+    account = session.get("account")
 
-    token = get_token_status(token_id)
+    if not isinstance(account, dict):
+        return jsonify({"error": "Authentication required"}), 401
 
-    if not token:
+    role = account.get("role_name")
+
+    if role == "customer":
+        # Revalidate the customer account and its active status.
+        from app.utils.auth import get_current_session_customer
+
+        account_id = account.get("account_id")
+        customer = get_current_session_customer(account_id)
+
+        if customer is None:
+            session.clear()
+            return jsonify({"error": "Authentication required"}), 401
+
+        token_rows = execute_query(
+            """
+            SELECT token_id, customer_id, status
+            FROM Token
+            WHERE token_id = %s
+            LIMIT 1
+            """,
+            (token_id,),
+            fetch=True,
+        )
+
+        if not token_rows:
+            return jsonify({"error": "Token not found"}), 404
+
+        token_row = token_rows[0]
+
+        if token_row["customer_id"] != customer["customer_id"]:
+            return jsonify({"error": "Token not found"}), 404
+
+        # Only expose fields required by the customer-facing UI.
+        token = get_token_status(token_id)
+
+        if not token:
+            return jsonify({"error": "Token not found"}), 404
+
         return jsonify({
-            'error': 'Token not found'
-        }), 404
+            "status": token["status"],
+            "waiting_ahead": token.get("waiting_ahead"),
+            "estimated_wait_minutes": token.get("estimated_wait_minutes"),
+        })
 
-    return jsonify(token)
+    if role in ("admin", "staff"):
+        # Reuse the existing database-backed staff permission check.
+        from app.utils.auth import get_current_session_account, get_user_permissions
 
+        account_id = account.get("account_id")
+        current_account = get_current_session_account(account_id)
+
+        if current_account is None:
+            session.clear()
+            return jsonify({"error": "Authentication required"}), 401
+
+        if "queue_operate" not in get_user_permissions(account_id):
+            return jsonify({"error": "Permission denied"}), 403
+
+        token = get_token_status(token_id)
+
+        if not token:
+            return jsonify({"error": "Token not found"}), 404
+
+        return jsonify(token)
+
+    return jsonify({"error": "Authentication required"}), 401
 
 # ============================================================
 # CALL SPECIFIC TOKEN
