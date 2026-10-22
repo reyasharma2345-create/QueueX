@@ -61,7 +61,7 @@
         @media (max-width: 600px) { .token-number-large { font-size: 72px; } .btn-group { flex-direction: column; } .btn { width: 100%; } .waiting-actions { flex-direction: column; width: 100%; } .btn-sm { width: 100%; } }
     </style>
 </head>
-<body>
+<body data-counter-id="{{ counter.counter_id }}" data-queue-id="{{ counter.queue_id }}">
 <div class="container">
     <header>
         <h1>Counter {{ counter.name }}</h1>
@@ -121,8 +121,8 @@
 <script>
     let currentTokenId = null;
     let currentTokenData = null;
-    const counterId = {{ counter.counter_id }};
-    const queueId = {{ counter.queue_id }};
+    const counterId = Number(document.body.dataset.counterId);
+    const queueId = Number(document.body.dataset.queueId);
     let refreshInterval = null;
     let isConnected = true;
 

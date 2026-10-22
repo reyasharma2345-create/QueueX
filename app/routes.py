@@ -11,9 +11,12 @@ from flask import (
     render_template,
     current_app,
     session,
+    Response,
+    stream_with_context,
 )
 from app.utils.auth import require_permission, require_customer_permission
 import re
+import time
 from functools import wraps
 from app.utils.procedures import (
     issue_token,
@@ -708,7 +711,169 @@ def get_token(token_id: int):
 
         return jsonify(token)
 
+# ============================================================
+# TOKEN STATUS STREAM (SSE)
+# ============================================================
+
+@api_bp.route('/tokens/<int:token_id>/stream', methods=['GET'])
+def stream_token_status(token_id: int):
+    """Stream token status updates via Server-Sent Events.
+
+    Customers receive updates only for their own token.
+    Staff with queue_operate permission receive updates for any token.
+    """
+    account = session.get("account")
+
+    if not isinstance(account, dict):
+        return jsonify({"error": "Authentication required"}), 401
+
+    role = account.get("role_name")
+
+    # Authorization check - same logic as GET /api/tokens/<id>
+    if role == "customer":
+        from app.utils.auth import get_current_session_customer
+
+        account_id = account.get("account_id")
+        customer = get_current_session_customer(account_id)
+
+        if customer is None:
+            session.clear()
+            return jsonify({"error": "Authentication required"}), 401
+
+        token_rows = execute_query(
+            """
+            SELECT token_id, customer_id, status
+            FROM Token
+            WHERE token_id = %s
+            LIMIT 1
+            """,
+            (token_id,),
+            fetch=True,
+        )
+
+        if not token_rows:
+            return jsonify({"error": "Token not found"}), 404
+
+        token_row = token_rows[0]
+
+        if token_row["customer_id"] != customer["customer_id"]:
+            return jsonify({"error": "Token not found"}), 404
+
+        # Customer authorized - stream filtered fields
+        def generate_customer():
+            last_data = None
+            last_heartbeat = 0
+
+            try:
+                while True:
+                    token = get_token_status(token_id)
+
+                    if not token:
+                        # Token no longer exists - close stream without
+                        # emitting a fabricated status to avoid information leakage.
+                        break
+
+                    # Filter to customer-visible fields
+                    data = {
+                        "status": token["status"],
+                        "waiting_ahead": token.get("waiting_ahead", 0),
+                        "estimated_wait_minutes": token.get("estimated_wait_minutes", 0),
+                    }
+
+                    # Only send if changed
+                    if data != last_data:
+                        yield f"data: {current_app.json.dumps(data)}\n\n"
+                        last_data = data
+
+                    # Terminal status - send final update and close
+                    if token["status"] in ("completed", "no-show"):
+                        break
+
+                    # Heartbeat every ~15 seconds
+                    now = time.time()
+                    if now - last_heartbeat >= 15:
+                        yield ": heartbeat\n\n"
+                        last_heartbeat = now
+
+                    time.sleep(2)
+
+            except GeneratorExit:
+                # Client disconnected
+                return
+            except Exception:
+                current_app.logger.exception("SSE stream error for token %s", token_id)
+                return
+
+        return Response(
+            stream_with_context(generate_customer()),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    if role in ("admin", "staff"):
+        from app.utils.auth import get_current_session_account, get_user_permissions
+
+        account_id = account.get("account_id")
+        current_account = get_current_session_account(account_id)
+
+        if current_account is None:
+            session.clear()
+            return jsonify({"error": "Authentication required"}), 401
+
+        if "queue_operate" not in get_user_permissions(account_id):
+            return jsonify({"error": "Permission denied"}), 403
+
+        # Staff authorized - stream full token data
+        def generate_staff():
+            last_data = None
+            last_heartbeat = 0
+
+            try:
+                while True:
+                    token = get_token_status(token_id)
+
+                    if not token:
+                        # Token no longer exists - close stream without
+                        # emitting a fabricated status to avoid information leakage.
+                        break
+
+                    # Staff sees full token data (same as GET response)
+                    data = token
+
+                    if data != last_data:
+                        yield f"data: {current_app.json.dumps(data)}\n\n"
+                        last_data = data
+
+                    if token["status"] in ("completed", "no-show"):
+                        break
+
+                    now = time.time()
+                    if now - last_heartbeat >= 15:
+                        yield ": heartbeat\n\n"
+                        last_heartbeat = now
+
+                    time.sleep(2)
+
+            except GeneratorExit:
+                return
+            except Exception:
+                current_app.logger.exception("SSE stream error for token %s", token_id)
+                return
+
+        return Response(
+            stream_with_context(generate_staff()),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     return jsonify({"error": "Authentication required"}), 401
+
 
 # ============================================================
 # CALL SPECIFIC TOKEN

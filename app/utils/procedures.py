@@ -216,15 +216,17 @@ def serve_token(token_id: int) -> bool:
     return True
 
 
+
 def get_token_status(
     token_id: int,
 ) -> Optional[Dict[str, Any]]:
-    """Get current token status and related details."""
+    """Get token status and current queue-wait estimates."""
     with get_cursor() as cursor:
         cursor.execute(
             """
             SELECT
                 t.*,
+                q.service_id AS service_id,
                 c.full_name AS customer_name,
                 c.phone AS customer_phone,
                 q.name AS queue_name,
@@ -247,9 +249,54 @@ def get_token_status(
             (token_id,),
         )
 
-        return cursor.fetchone()
+        token = cursor.fetchone()
 
+        if not token:
+            return None
 
+        # Only waiting customers ahead of this token count.
+        if token.get("status") == "waiting":
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS cnt
+                FROM Token
+                WHERE queue_id = %s
+                  AND status = 'waiting'
+                  AND token_number < %s
+                """,
+                (token["queue_id"], token["token_number"]),
+            )
+            result = cursor.fetchone()
+            waiting_ahead = int(result["cnt"]) if result else 0
+        else:
+            waiting_ahead = 0
+
+        token["waiting_ahead"] = waiting_ahead
+
+        # Estimated wait = people ahead × estimated service duration.
+        cursor.execute(
+            """
+            SELECT estimated_duration_minutes
+            FROM Service
+            WHERE service_id = %s
+            """,
+            (token["service_id"],),
+        )
+        service = cursor.fetchone()
+
+        duration = (
+            service["estimated_duration_minutes"]
+            if service and service["estimated_duration_minutes"] is not None
+            else 15
+        )
+
+        token["estimated_wait_minutes"] = (
+            waiting_ahead * int(duration)
+            if token.get("status") == "waiting"
+            else 0
+        )
+
+        return token
 def get_queue_waiting_count(queue_id: int) -> int:
     """Get the number of waiting tokens in a queue."""
     with get_cursor() as cursor:

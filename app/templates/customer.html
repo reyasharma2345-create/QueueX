@@ -562,7 +562,13 @@
                     <select id="service-select">
                         <option value="">Select a branch first</option>
                     </select>
-                </div>
+                    </div>
+                <div class="field">
+    <label for="queue-select">Choose a queue</label>
+    <select id="queue-select" disabled>
+        <option value="">Select a service first</option>
+    </select>
+    </div>
                 <div id="service-message" class="message"></div>
                 <div id="service-documents" class="document-list hidden"></div>
                 <div style="display: flex; gap: 12px; margin-top: 16px;">
@@ -614,7 +620,7 @@
                     <div class="queue-info">
                         <div class="info-box">
                             <div id="people-ahead" class="info-value">--</div>
-                            <div class="info-label">People Ahead</div>
+                            <div class="info-label">People_Ahead</div>
                         </div>
                         <div class="info-box">
                             <div id="estimated-wait" class="info-value">--</div>
@@ -648,7 +654,9 @@
         branchName: null,
         serviceId: null,
         serviceName: null,
+        queues: [],
         queueId: null,
+        requestQueueId: null,
         queueName: null,
         requestId: null,
         documents: [],
@@ -904,77 +912,184 @@
     // ==========================================
     async function loadServices() {
         document.getElementById('selected-branch-display').textContent = `Branch: ${currentState.branchName}`;
+        hideMessage('service-message');
+
+        const serviceSelect = document.getElementById('service-select');
+        const queueSelect = document.getElementById('queue-select');
+        serviceSelect.innerHTML = '<option value="">Loading services...</option>';
+        queueSelect.innerHTML = '<option value="">Loading queues...</option>';
+        queueSelect.disabled = true;
+        document.getElementById('service-documents').classList.add('hidden');
 
         try {
-            const res = await apiRequest('/api/services');
-            const services = await res.json();
+            const [servicesRes, queuesRes] = await Promise.all([
+                apiRequest('/api/services'),
+                apiRequest(`/api/branches/${currentState.branchId}/queues`)
+            ]);
+            if (!servicesRes.ok) throw new Error('Failed to load services');
+            if (!queuesRes.ok) throw new Error('Failed to load queues for this branch');
 
-            const select = document.getElementById('service-select');
-            select.innerHTML = '<option value="">Select a service</option>';
-            services.forEach(s => {
-                const opt = document.createElement('option');
-                opt.value = s.service_id;
-                opt.textContent = `${s.name} (${s.estimated_duration_minutes} min)`;
-                opt.dataset.serviceName = s.name;
-                opt.dataset.duration = s.estimated_duration_minutes;
-                select.appendChild(opt);
+            const services = await servicesRes.json();
+            currentState.queues = await queuesRes.json();
+            serviceSelect.innerHTML = '<option value="">Select a service</option>';
+            services.forEach(service => {
+                const option = document.createElement('option');
+                option.value = service.service_id;
+                option.textContent = `${service.name} (${service.estimated_duration_minutes} min)`;
+                option.dataset.serviceName = service.name;
+                serviceSelect.appendChild(option);
             });
 
-            document.getElementById('service-documents').classList.add('hidden');
+            queueSelect.innerHTML = '<option value="">Select a service first</option>';
+            queueSelect.disabled = true;
+            currentState.serviceId = null;
+            currentState.serviceName = null;
+            currentState.queueId = null;
+            currentState.queueName = null;
+            currentState.requestId = null;
+            currentState.requestQueueId = null;
+            currentState.documents = [];
         } catch (err) {
-            showMessage('service-message', 'Failed to load services', true);
+            serviceSelect.innerHTML = '<option value="">Unable to load services</option>';
+            queueSelect.innerHTML = '<option value="">Unable to load queues</option>';
+            queueSelect.disabled = true;
+            showMessage('service-message', err.message || 'Failed to load services and queues', true);
         }
+    }
+
+    function populateQueuesForSelectedService() {
+        const queueSelect = document.getElementById('queue-select');
+        queueSelect.innerHTML = '<option value="">Select a queue</option>';
+        const matchingQueues = currentState.queues.filter(queue =>
+            Number(queue.service_id) === Number(currentState.serviceId)
+        );
+        matchingQueues.forEach(queue => {
+            const option = document.createElement('option');
+            option.value = queue.queue_id;
+            option.textContent = queue.name;
+            option.dataset.queueName = queue.name;
+            queueSelect.appendChild(option);
+        });
+        queueSelect.disabled = matchingQueues.length === 0;
+        if (matchingQueues.length === 0) {
+            queueSelect.innerHTML = '<option value="">No active queue for this service at this branch</option>';
+        }
+        currentState.queueId = null;
+        currentState.queueName = null;
     }
 
     document.getElementById('service-select').addEventListener('change', async () => {
         const select = document.getElementById('service-select');
+        const documentsContainer = document.getElementById('service-documents');
+        hideMessage('service-message');
         if (!select.value) {
-            document.getElementById('service-documents').classList.add('hidden');
+            currentState.serviceId = null;
+            currentState.serviceName = null;
+            currentState.documents = [];
+            documentsContainer.classList.add('hidden');
+            const queueSelect = document.getElementById('queue-select');
+            queueSelect.innerHTML = '<option value="">Select a service first</option>';
+            queueSelect.disabled = true;
+            currentState.queueId = null;
+            currentState.queueName = null;
             return;
         }
-
-        currentState.serviceId = parseInt(select.value);
+        currentState.serviceId = Number(select.value);
         currentState.serviceName = select.options[select.selectedIndex].dataset.serviceName;
+        populateQueuesForSelectedService();
         await loadServiceDocuments();
     });
 
+    document.getElementById('queue-select').addEventListener('change', () => {
+        const select = document.getElementById('queue-select');
+        currentState.queueId = select.value ? Number(select.value) : null;
+        currentState.queueName = select.value ? select.options[select.selectedIndex].dataset.queueName : null;
+    });
+
     async function loadServiceDocuments() {
+        const container = document.getElementById('service-documents');
+        container.classList.add('hidden');
+        container.innerHTML = '';
+        hideMessage('service-message');
         try {
             const res = await apiRequest(`/api/services/${currentState.serviceId}/documents`);
             const documents = await res.json();
-
-            currentState.documents = documents;
-            const container = document.getElementById('service-documents');
+            if (!res.ok) throw new Error(documents.error || 'Failed to load document requirements');
+            currentState.documents = documents.map(doc => ({ ...doc, readiness_status: 'missing' }));
             container.classList.remove('hidden');
-            container.innerHTML = '';
-
-            documents.forEach(doc => {
+            if (documents.length === 0) {
+                container.textContent = 'No specific documents are configured for this service.';
+                return;
+            }
+            currentState.documents.forEach(doc => {
                 const item = document.createElement('div');
                 item.className = 'document-item ' + (doc.is_required ? 'required' : 'optional');
-                item.innerHTML = `
-                    <div class="document-info">
-                        <div class="document-name">${doc.name}</div>
-                        ${doc.description ? `<div class="document-description">${doc.description}</div>` : ''}
-                    </div>
-                    <span class="document-badge ${doc.is_required ? 'required' : 'optional'}">
-                        ${doc.is_required ? 'Required' : 'Optional'}
-                    </span>
-                `;
+                const info = document.createElement('div');
+                info.className = 'document-info';
+                const name = document.createElement('div');
+                name.className = 'document-name';
+                name.textContent = doc.name;
+                info.appendChild(name);
+                if (doc.description) {
+                    const description = document.createElement('div');
+                    description.className = 'document-description';
+                    description.textContent = doc.description;
+                    info.appendChild(description);
+                }
+                const badge = document.createElement('span');
+                badge.className = 'document-badge ' + (doc.is_required ? 'required' : 'optional');
+                badge.textContent = doc.is_required ? 'Required' : 'Optional';
+                item.append(info, badge);
                 container.appendChild(item);
             });
         } catch (err) {
+            currentState.documents = [];
+            container.classList.remove('hidden');
+            container.textContent = 'Unable to load document requirements. Please try again.';
             showMessage('service-message', 'Failed to load document requirements', true);
         }
     }
 
-    document.getElementById('service-next').addEventListener('click', () => {
+    document.getElementById('service-next').addEventListener('click', async () => {
         if (!currentState.serviceId) {
             showMessage('service-message', 'Please select a service', true);
             return;
         }
-        showStep('step-documents');
-        updateStepDots(3);
-        renderDocumentConfirmation();
+        const queueSelect = document.getElementById('queue-select');
+        if (!queueSelect.value) {
+            showMessage('service-message', 'Please select an active queue for this service', true);
+            return;
+        }
+        if (document.getElementById('service-documents').classList.contains('hidden')) {
+            showMessage('service-message', 'Wait for the service document requirements to load, then try again', true);
+            return;
+        }
+
+        const btn = document.getElementById('service-next');
+        setLoading(btn, true);
+        hideMessage('service-message');
+        try {
+            currentState.queueId = Number(queueSelect.value);
+            currentState.queueName = queueSelect.options[queueSelect.selectedIndex].dataset.queueName;
+            if (!currentState.requestId || Number(currentState.requestQueueId) !== currentState.queueId) {
+                const res = await apiRequest('/api/customer-requests', {
+                    method: 'POST',
+                    body: JSON.stringify({ queue_id: currentState.queueId })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to create customer request');
+                currentState.requestId = data.request_id;
+                currentState.requestQueueId = currentState.queueId;
+                currentState.documents = currentState.documents.map(doc => ({ ...doc, readiness_status: 'missing' }));
+            }
+            renderDocumentConfirmation();
+            showStep('step-documents');
+            updateStepDots(3);
+        } catch (err) {
+            showMessage('service-message', err.message || 'Failed to create customer request', true);
+        } finally {
+            setLoading(btn, false);
+        }
     });
 
     document.getElementById('service-back').addEventListener('click', () => {
@@ -986,53 +1101,64 @@
     // DOCUMENTS STEP
     // ==========================================
     function renderDocumentConfirmation() {
-        document.getElementById('selected-service-display').textContent = `Service: ${currentState.serviceName}`;
-
+        document.getElementById('selected-service-display').textContent =
+            `Service: ${currentState.serviceName} | Queue: ${currentState.queueName}`;
         const container = document.getElementById('documents-list');
         container.innerHTML = '';
-
+        if (currentState.documents.length === 0) {
+            container.textContent = 'No documents are configured for this service.';
+        }
         currentState.documents.forEach(doc => {
+            if (!doc.readiness_status) doc.readiness_status = 'missing';
             const item = document.createElement('div');
             item.className = 'document-item ' + (doc.is_required ? 'required' : 'optional');
-            item.innerHTML = `
-                <div class="document-info">
-                    <div class="document-name">${doc.name}</div>
-                    ${doc.description ? `<div class="document-description">${doc.description}</div>` : ''}
-                </div>
-                <span class="document-badge ${doc.is_required ? 'required' : 'optional'}">
-                    ${doc.is_required ? 'Required' : 'Optional'}
-                </span>
-            `;
+            item.dataset.docId = doc.document_id;
+            const info = document.createElement('div');
+            info.className = 'document-info';
+            const name = document.createElement('div');
+            name.className = 'document-name';
+            name.textContent = doc.name;
+            info.appendChild(name);
+            if (doc.description) {
+                const description = document.createElement('div');
+                description.className = 'document-description';
+                description.textContent = doc.description;
+                info.appendChild(description);
+            }
+            const controls = document.createElement('div');
+            controls.className = 'document-status';
+            ['available', 'missing'].forEach(status => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `status-btn ${status}${doc.readiness_status === status ? ' active-btn' : ''}`;
+                button.dataset.status = status;
+                button.textContent = status === 'available' ? 'Available' : 'Missing';
+                controls.appendChild(button);
+            });
+            info.appendChild(controls);
+            const badge = document.createElement('span');
+            badge.className = 'document-badge ' + (doc.is_required ? 'required' : 'optional');
+            badge.textContent = doc.is_required ? 'Required' : 'Optional';
+            item.append(info, badge);
             container.appendChild(item);
         });
-
         updateReadinessSummary();
     }
 
     function updateReadinessSummary() {
         const summary = document.getElementById('readiness-summary');
-        const requiredDocs = currentState.documents.filter(d => d.is_required);
-        const availableRequired = requiredDocs.filter(d => d.readiness_status === 'available');
-
-        const allAvailable = requiredDocs.length > 0 && availableRequired.length === requiredDocs.length;
-
+        const requiredDocs = currentState.documents.filter(doc => doc.is_required);
+        const availableRequired = requiredDocs.filter(doc => doc.readiness_status === 'available');
+        const allAvailable = availableRequired.length === requiredDocs.length;
         summary.className = 'readiness-summary' + (allAvailable ? '' : ' incomplete');
-
         let html = '<h3>' + (allAvailable ? '✓ All required documents available' : '⚠ Some required documents pending') + '</h3>';
-        html += '<div class="progress-bar"><div class="progress-fill" style="width: ' + (requiredDocs.length > 0 ? (availableRequired.length / requiredDocs.length * 100) : 0) + '%"></div></div>';
+        const percentage = requiredDocs.length ? (availableRequired.length / requiredDocs.length) * 100 : 100;
+        html += '<div class="progress-bar"><div class="progress-fill" style="width: ' + percentage + '%"></div></div>';
         html += '<p style="font-size: 13px;">' + availableRequired.length + ' of ' + requiredDocs.length + ' required documents available</p>';
-
         requiredDocs.forEach(doc => {
             const isAvailable = doc.readiness_status === 'available';
-            html += `
-                <div class="readiness-item">
-                    <span class="${isAvailable ? 'check-icon' : 'cross-icon'}">${isAvailable ? '✓' : '✗'}</span>
-                    <span>${doc.name} (Required)</span>
-                    <span style="margin-left: auto; color: ${isAvailable ? '#10b981' : '#dc2626'}; font-size: 12px;">${isAvailable ? 'Available' : 'Pending'}</span>
-                </div>
-            `;
+            html += `<div class="readiness-item"><span class="${isAvailable ? 'check-icon' : 'cross-icon'}">${isAvailable ? '✓' : '✗'}</span><span>${doc.name} (Required)</span><span style="margin-left:auto;color:${isAvailable ? '#10b981' : '#dc2626'};font-size:12px;">${isAvailable ? 'Available' : 'Pending'}</span></div>`;
         });
-
         summary.innerHTML = html;
     }
 
@@ -1040,6 +1166,10 @@
         const requiredDocs = currentState.documents.filter(d => d.is_required);
         const availableRequired = requiredDocs.filter(d => d.readiness_status === 'available');
 
+        if (!currentState.requestId) {
+            showMessage('documents-message', 'No customer request exists. Go back and continue again.', true);
+            return;
+        }
         if (availableRequired.length !== requiredDocs.length) {
             showMessage('documents-message', 'All required documents must be marked as available', true);
             return;
@@ -1089,38 +1219,32 @@
     document.getElementById('documents-list').addEventListener('click', async (e) => {
         const btn = e.target.closest('.status-btn');
         if (!btn) return;
-
         const item = btn.closest('.document-item');
-        const docId = parseInt(item.dataset.docId);
+        const docId = Number(item?.dataset.docId);
         const status = btn.dataset.status;
-
-        if (btn.classList.contains('active-btn')) return;
-
+        if (!Number.isInteger(docId) || docId <= 0 || !currentState.requestId) {
+            showMessage('documents-message', 'Unable to identify this request document. Please go back and try again.', true);
+            return;
+        }
+        if (!['available', 'missing'].includes(status) || btn.classList.contains('active-btn')) return;
+        const buttons = item.querySelectorAll('.status-btn');
+        buttons.forEach(button => { button.disabled = true; });
+        hideMessage('documents-message');
         try {
             const res = await apiRequest(`/api/customer-requests/${currentState.requestId}/documents`, {
                 method: 'PATCH',
-                body: JSON.stringify({
-                    document_id: docId,
-                    readiness_status: status
-                })
+                body: JSON.stringify({ document_id: docId, readiness_status: status })
             });
-
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Failed to update document status');
-            }
-
-            // Update local state
-            const doc = currentState.documents.find(d => d.document_id === docId);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to update document status');
+            const doc = currentState.documents.find(document => Number(document.document_id) === docId);
             if (doc) doc.readiness_status = status;
-
-            // Update UI
-            item.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active-btn'));
-            btn.classList.add('active-btn');
+            buttons.forEach(button => button.classList.toggle('active-btn', button.dataset.status === status));
             updateReadinessSummary();
-
         } catch (err) {
-            showMessage('documents-message', err.message, true);
+            showMessage('documents-message', err.message || 'Failed to update document status', true);
+        } finally {
+            buttons.forEach(button => { button.disabled = false; });
         }
     });
 
@@ -1141,40 +1265,144 @@
             const token = await res.json();
 
             if (res.ok) {
-                const statusEl = document.getElementById('queue-status');
-                statusEl.textContent = token.status.toUpperCase();
-                statusEl.className = 'status ' + token.status;
-
-                document.getElementById('people-ahead').textContent = token.waiting_ahead !== undefined ? token.waiting_ahead : '--';
-                document.getElementById('estimated-wait').textContent = token.estimated_wait_minutes !== undefined ? token.estimated_wait_minutes : '--';
+                updateTokenUI(token);
+                // Stop live updates if token reached terminal status
+                if (token.status === 'completed' || token.status === 'no-show') {
+                    stopAllLiveUpdates();
+                }
+            } else if (res.status === 401 || res.status === 404) {
+                // Token no longer accessible or session expired
+                stopAllLiveUpdates();
+                showMessage('token-message', 'Token session expired. Please log in again.', true);
+                setTimeout(() => {
+                    document.getElementById('logout-btn').click();
+                }, 2000);
             }
         } catch (err) {
             console.error('Failed to update token status:', err);
         }
     }
 
-    function startLiveUpdates() {
-        if (window.liveUpdateInterval) clearInterval(window.liveUpdateInterval);
-        window.liveUpdateInterval = setInterval(updateTokenStatus, 2000);
+    function updateTokenUI(token) {
+        const statusEl = document.getElementById('queue-status');
+        statusEl.textContent = token.status.toUpperCase();
+        statusEl.className = 'status ' + token.status;
+
+        document.getElementById('people-ahead').textContent = token.waiting_ahead !== undefined ? token.waiting_ahead : '--';
+        document.getElementById('estimated-wait').textContent = token.estimated_wait_minutes !== undefined ? token.estimated_wait_minutes : '--';
     }
 
-    function stopLiveUpdates() {
+    let eventSource = null;
+    let sseConnected = false;
+    let fallbackToPolling = false;
+
+    function startSSE() {
+        // Close existing EventSource if any
+        stopSSE();
+
+        const tokenId = currentState.tokenId;
+        if (!tokenId) return;
+
+        try {
+            eventSource = new EventSource(`/api/tokens/${tokenId}/stream`);
+            sseConnected = false;
+            fallbackToPolling = false;
+
+            eventSource.onopen = () => {
+                sseConnected = true;
+                console.log('SSE connection established');
+                // Stop polling when SSE connects
+                stopPolling();
+            };
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    // Validate expected fields
+                    if (data && typeof data.status === 'string' &&
+                        typeof data.waiting_ahead === 'number' &&
+                        typeof data.estimated_wait_minutes === 'number') {
+                        updateTokenUI(data);
+                        // Check for terminal status
+                        if (data.status === 'completed' || data.status === 'no-show') {
+                            stopAllLiveUpdates();
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Failed to parse SSE message:', err);
+                }
+            };
+
+            eventSource.onerror = (err) => {
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    console.log('SSE connection closed');
+                    if (!fallbackToPolling) {
+                        console.log('Falling back to polling');
+                        fallbackToPolling = true;
+                        stopSSE();
+                        startPolling();
+                    }
+                }
+            };
+        } catch (err) {
+            console.error('Failed to create EventSource:', err);
+            fallbackToPolling = true;
+            startPolling();
+        }
+    }
+
+    function stopSSE() {
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+            sseConnected = false;
+        }
+    }
+
+    function startPolling() {
+        if (window.liveUpdateInterval) return; // Already polling
+        window.liveUpdateInterval = setInterval(() => {
+            updateTokenStatus();
+        }, 2000);
+    }
+
+    function stopPolling() {
         if (window.liveUpdateInterval) {
             clearInterval(window.liveUpdateInterval);
             window.liveUpdateInterval = null;
         }
     }
 
+    function stopAllLiveUpdates() {
+        stopSSE();
+        stopPolling();
+    }
+
+    function startLiveUpdates() {
+        // Try SSE first, fall back to polling on error
+        startSSE();
+
+        // Safety timeout: if SSE doesn't connect within 5 seconds, start polling
+        setTimeout(() => {
+            if (!sseConnected && !fallbackToPolling) {
+                console.log('SSE connection timeout, falling back to polling');
+                fallbackToPolling = true;
+                stopSSE();
+                startPolling();
+            }
+        }, 5000);
+    }
+
     document.getElementById('new-request-btn').addEventListener('click', () => {
-        stopLiveUpdates();
-        currentState = { user: currentState.user, userType: 'customer', customerName: currentState.customerName };
+        stopAllLiveUpdates();
+        currentState = { user: currentState.user, userType: 'customer', branchId: null, branchName: null, serviceId: null, serviceName: null, queues: [], queueId: null, queueName: null, requestId: null, requestQueueId: null, documents: [], tokenId: null, tokenNumber: null, customerName: currentState.customerName };
         showStep('step-branch');
         updateStepDots(1);
         loadBranches();
     });
 
     document.getElementById('logout-btn').addEventListener('click', async () => {
-        stopLiveUpdates();
+        stopAllLiveUpdates();
         const logoutEndpoint = currentState.userType === 'customer'
             ? '/api/auth/customer/logout'
             : '/api/auth/logout';
@@ -1183,7 +1411,7 @@
         } catch (err) {
             console.error('Logout request failed:', err);
         }
-        currentState = { userType: 'customer' };
+        currentState = { user: null, userType: 'customer', branchId: null, branchName: null, serviceId: null, serviceName: null, queues: [], queueId: null, queueName: null, requestId: null, requestQueueId: null, documents: [], tokenId: null, tokenNumber: null, customerName: null };
         document.getElementById('login-form').reset();
         document.getElementById('register-form').reset();
         registerPanel.classList.add('hidden');

@@ -30,7 +30,9 @@ INSERT INTO `Queue`
     (`queue_id`, `branch_id`, `service_id`, `name`, `is_active`, `last_token_number`)
 VALUES
     (1, 1, 1, 'Main Branch - Account Services', TRUE, 0),
-    (2, 2, 2, 'City Branch - Cash Services', TRUE, 0);
+    (2, 2, 2, 'City Branch - Cash Services', TRUE, 0),
+    (3, 1, 3, 'Main Branch - Loan Services', TRUE, 0),
+    (4, 2, 3, 'City Branch - Loan Services', TRUE, 0);
 
 -- ============================================================
 -- 4. COUNTERS
@@ -115,4 +117,9 @@ INSERT INTO `service_document`
 VALUES
     (1, 1, TRUE),
     (1, 2, TRUE),
-    (1, 3, TRUE);
+    (1, 3, TRUE),
+    (2, 1, TRUE),
+    (2, 2, TRUE),
+    (3, 1, TRUE),
+    (3, 2, TRUE),
+    (3, 3, TRUE);

@@ -145,7 +145,6 @@ def execute_many(query: str, params_list: list, dictionary: bool = True):
         cursor = conn.cursor(dictionary=dictionary)
         try:
             cursor.executemany(query, params_list)
-            conn.commit()
             return cursor.rowcount
         finally:
             cursor.close()
@@ -168,6 +167,14 @@ def init_database() -> bool:
     Initialize database by running schema.sql.
     Returns True if successful.
     """
+    # Never run the destructive development schema against production.
+    if _config.database.strip().lower() == "queuex":
+        print(
+            "Refusing to initialize the production 'queuex' database. "
+            "Use a dedicated development or test database."
+        )
+        return False
+
     import subprocess
     import sys
     
